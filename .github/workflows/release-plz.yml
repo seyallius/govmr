@@ -43,17 +43,18 @@ jobs:
 
   build-assets:
     needs: release
-    if: startsWith(github.ref_name, 'v')  # Check if this is a version tag
-    uses: seyallius/github-workflows/.github/workflows/build-assets.yml@v0.4.2
+    if: needs.release.outputs.release_created == 'true'  # Check the boolean output from the release-plz job
+    uses: seyallius/github-workflows/.github/workflows/build-assets.yml@v0.4.4
     with:
       binary_name: govmr
       version: ${{ needs.release.outputs.tag_name }}   # Pass the actual tag
 
   publish-assets:
     needs: [release, build-assets]
-    if: startsWith(github.ref_name, 'v')  # Check if this is a version tag
-    uses: seyallius/github-workflows/.github/workflows/release-assets.yml@v0.4.2
+    if: needs.release.outputs.release_created == 'true'  # Check the boolean output from the release-plz job
+    uses: seyallius/github-workflows/.github/workflows/release-assets.yml@v0.4.4
     with:
       artifact_pattern: govmr*
       generate_release_notes: true
       tag_name: ${{ needs.release.outputs.tag_name }}
+      fail_on_failure: false
