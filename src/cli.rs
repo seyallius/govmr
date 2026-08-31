@@ -1,24 +1,57 @@
+//! Copyright (c) 2026 SeyedAli
+//! Licensed under the MIT License. See LICENSE file in the project root for details.
+//!
+//! Module cli - Command-line interface definitions and subcommand handlers.
+
 use crate::manager::GoManager;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::sync::Arc;
 
+// ---------------------------------------------- Types ----------------------------------------- //
+
+/// CLI argument parser configuration for GoVMR.
 #[derive(Parser)]
-#[command(name = "govm", about = "Go Version Manager in Rust", version)]
+#[command(name = "govmr", about = "Go Version Manager in Rust", version)]
 pub struct Cli {
+    /// Optional subcommand to execute. If omitted, launches the interactive TUI.
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
 
+/// Available subcommands for command-line operations.
 #[derive(Subcommand)]
 pub enum Commands {
-    Install { version: String },
-    Use { version: String },
-    Delete { version: String },
+    /// Download and install a specified Go version.
+    Install {
+        /// Target version or prefix (e.g. "1.22", "1.21.6").
+        version: String,
+    },
+    /// Switch the active system Go version to an installed release.
+    Use {
+        /// Installed version to activate.
+        version: String,
+    },
+    /// Remove an installed Go version from disk.
+    Delete {
+        /// Version to uninstall.
+        version: String,
+    },
+    /// List all locally installed Go versions.
     List,
 }
 
+// ----------------------------------------- Public API ----------------------------------------- //
+
+/// Dispatches execution based on the parsed CLI subcommand.
+///
+/// # Arguments
+/// * `cli` - The parsed CLI command structure.
+/// * `manager` - Thread-safe reference to the GoManager.
+///
+/// # Errors
+/// Returns [`anyhow::Error`] if requested versions cannot be resolved or operations fail.
 pub async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
     match cli.command {
         Some(Commands::Install { version }) => {
@@ -61,7 +94,7 @@ pub async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
             let in_path = manager.switch_version(target)?;
             println!("✅ Switched to Go {}", target.raw_version);
             if !in_path {
-                println!("⚠️  GoVM shim is not in your PATH. Please configure your shell.");
+                println!("⚠️  GoVMR shim is not in your PATH. Please configure your shell.");
             }
         }
         Some(Commands::Delete { version }) => {

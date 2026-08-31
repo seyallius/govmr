@@ -46,7 +46,7 @@ jobs:
     if: startsWith(github.ref_name, 'v')  # Check if this is a version tag
     uses: seyallius/github-workflows/.github/workflows/build-assets.yml@v0.4.2
     with:
-      binary_name: govm
+      binary_name: govmr
       version: ${{ needs.release.outputs.tag_name }}   # Pass the actual tag
 
   publish-assets:
@@ -54,6 +54,6 @@ jobs:
     if: startsWith(github.ref_name, 'v')  # Check if this is a version tag
     uses: seyallius/github-workflows/.github/workflows/release-assets.yml@v0.4.2
     with:
-      artifact_pattern: govm*
+      artifact_pattern: govmr*
       generate_release_notes: true
       tag_name: ${{ needs.release.outputs.tag_name }}
