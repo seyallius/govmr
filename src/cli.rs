@@ -162,9 +162,7 @@ pub async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
                 RESET
             );
             let versions = manager.fetch_versions().await?;
-            let target = versions
-                .iter()
-                .find(|v| v.raw_version == clean_ver || v.raw_version.starts_with(clean_ver))
+            let target = resolve_version(clean_ver, &versions)
                 .ok_or_else(|| anyhow::anyhow!("Version {} not found", clean_ver))?;
 
             // The bar starts as a download gauge; it is swapped for a spinner
@@ -192,12 +190,8 @@ pub async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
         Some(Commands::Use { version }) => {
             let clean_ver = version.trim_start_matches("go");
             let versions = manager.fetch_versions().await?;
-            let target = versions
-                .iter()
-                .find(|v| {
-                    (v.raw_version == clean_ver || v.raw_version.starts_with(clean_ver))
-                        && v.installed
-                })
+            let installed: Vec<GoVersion> = versions.into_iter().filter(|v| v.installed).collect();
+            let target = resolve_version(clean_ver, &installed)
                 .ok_or_else(|| anyhow::anyhow!("Installed version {} not found", clean_ver))?;
 
             let in_path = manager.switch_version(target)?;
@@ -217,9 +211,8 @@ pub async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
         Some(Commands::Delete { version }) => {
             let clean_ver = version.trim_start_matches("go");
             let versions = manager.fetch_versions().await?;
-            let target = versions
-                .iter()
-                .find(|v| v.raw_version == clean_ver && v.installed)
+            let installed: Vec<GoVersion> = versions.into_iter().filter(|v| v.installed).collect();
+            let target = resolve_version(clean_ver, &installed)
                 .ok_or_else(|| anyhow::anyhow!("Installed version {} not found", clean_ver))?;
 
             manager.delete_version(target)?;

@@ -23,6 +23,9 @@ for scripting and automation.
   `~/.govmr/config.toml` and reloaded on every launch — or set it from the CLI with `govmr theme <name>`. Change it
   again any time. (An old plain-text `~/.govmr/config` is migrated automatically.)
 - **CLI progress bar**: `govmr install` shows a colored byte/speed/ETA bar that morphs into a spinner during extraction.
+- **Smart version matching**: Prefixes are resolved with proper semver component boundaries (`govmr use 1.22`
+  matches the latest `1.22.x`, never `1.2` or `1.220`); prerelease queries like `1.24rc1` require an exact pre-release
+  match.
 - **Non-Destructive Version Switching**: Uses executable shims (`~/.govmr/shim`) to instantly switch active versions
   without modifying global binary paths.
 - **Cross-Platform**: Full support for Linux, macOS, and Windows.
