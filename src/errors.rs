@@ -29,4 +29,27 @@ pub enum GovmError {
     /// Emitted when archive extraction (tar.gz or zip) encounters corrupt data or extraction errors.
     #[error("Archive extraction error: {0}")]
     Extraction(String),
+    /// Emitted when a manifest/download request returns a non-success HTTP status.
+    #[error("HTTP {status} while requesting {url}")]
+    HttpStatus {
+        /// Numeric status code (e.g. 404).
+        status: u16,
+        /// Final URL after following redirects.
+        url: String,
+    },
+    /// Emitted when the downloaded body doesn't start with the expected archive
+    /// magic bytes — typically an HTML error / proxy / captive-portal page.
+    #[error(
+        "downloaded payload is not a {kind} archive (first bytes: {head}).\
+        The server sent non-binary content — see ~/.govmr/govmr.log for the final URL\
+        (proxy? block page? unpublished file?). URL: {url}"
+    )]
+    NotAnArchive {
+        /// Expected archive kind ("tar.gz" or "zip").
+        kind: String,
+        /// Hex dump of the leading bytes actually received.
+        head: String,
+        /// Final URL after following redirects.
+        url: String,
+    },
 }

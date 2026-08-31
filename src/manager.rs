@@ -15,7 +15,7 @@ use futures_util::StreamExt;
 use std::{
     env::consts::{ARCH, OS},
     fs::{self, File},
-    io::Read as _,
+    io::Read,
     path::PathBuf,
     sync::Mutex,
     time::{Duration, Instant},
@@ -123,21 +123,22 @@ impl GoManager {
     pub async fn fetch_versions(&self) -> Result<Vec<GoVersion>, GovmError> {
         let url = "https://go.dev/dl/?mode=json&include=all";
         logging::debug(&format!("refresh: GET {url}"));
-        let releases: Vec<GoRelease> = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| {
-                logging::error(&format!("refresh failed (request): {e}"));
-                GovmError::from(e)
-            })?
-            .json()
-            .await
-            .map_err(|e| {
-                logging::error(&format!("refresh failed (decode): {e}"));
-                GovmError::from(e)
-            })?;
+        let res = self.client.get(url).send().await.map_err(|e| {
+            logging::error(&format!("refresh failed (request): {e}"));
+            GovmError::from(e)
+        })?;
+        let status = res.status();
+        if !status.is_success() {
+            logging::error(&format!("refresh failed: HTTP {status} for {}", res.url()));
+            return Err(GovmError::HttpStatus {
+                status: status.as_u16(),
+                url: res.url().to_string(),
+            });
+        }
+        let releases: Vec<GoRelease> = res.json().await.map_err(|e| {
+            logging::error(&format!("refresh failed (decode): {e}"));
+            GovmError::from(e)
+        })?;
 
         let go_os = match OS {
             "macos" => "darwin",
@@ -208,6 +209,21 @@ impl GoManager {
         ));
 
         let res = self.client.get(&version.url).send().await?;
+        let status = res.status();
+        let final_url = res.url().clone(); // where we *actually* ended up
+        logging::debug(&format!(
+            "download response: HTTP {status} (final url: {final_url})"
+        ));
+        if !status.is_success() {
+            logging::error(&format!(
+                "install failed: go{}: HTTP {status} for {final_url}",
+                version.raw_version
+            ));
+            return Err(GovmError::HttpStatus {
+                status: status.as_u16(),
+                url: final_url.to_string(),
+            });
+        }
         let total_size = res.content_length().unwrap_or(version.size);
         let mut downloaded: u64 = 0;
         let mut stream = res.bytes_stream();
@@ -273,6 +289,12 @@ impl GoManager {
             }
         }
 
+        if total_size > 0 && downloaded != total_size {
+            logging::warn(&format!(
+                "size mismatch: expected {total_size} bytes, received {downloaded} ({final_url})"
+            ));
+        }
+
         // Final 100% report, then flip to the extraction phase.
         progress(InstallProgress::Downloading {
             downloaded,
@@ -281,6 +303,18 @@ impl GoManager {
         });
         progress(InstallProgress::Extracting);
 
+        let is_tar = version.filename.ends_with(".tar.gz");
+        let head = read_head(&download_path, 16);
+        if let Some(bytes) = &head {
+            let hex: Vec<String> = bytes.iter().map(|b| format!("{b:02x}")).collect();
+            logging::debug(&format!("archive head: {}", hex.join(" ")));
+        }
+        check_archive_magic(
+            head.as_deref().unwrap_or_default(),
+            is_tar,
+            &final_url.to_string(),
+        )?;
+
         if target_dir.exists() {
             fs::remove_dir_all(&target_dir)?;
         }
@@ -288,7 +322,6 @@ impl GoManager {
 
         let dl_path_clone = download_path.clone();
         let target_dir_clone = target_dir.clone();
-        let is_tar = version.filename.ends_with(".tar.gz");
 
         let extraction = tokio::task::spawn_blocking(move || -> Result<(), GovmError> {
             if is_tar {
@@ -417,4 +450,36 @@ impl GoManager {
         };
         parse(v1).cmp(&parse(v2))
     }
+}
+
+// ----------------------------------------- Public API ----------------------------------------- //
+
+/// Validates that a downloaded payload starts with the expected archive magic.
+///
+/// gzip archives begin with `1f 8b`, zip archives with `50 4b` ("PK"). Anything
+/// else — most commonly an HTML error or proxy page — is rejected *before*
+/// extraction so users get an actionable error instead of "invalid gzip header".
+pub fn check_archive_magic(head: &[u8], is_tar: bool, url: &str) -> Result<(), GovmError> {
+    let magic: &[u8] = if is_tar { &[0x1f, 0x8b] } else { &[0x50, 0x4b] };
+    if head.len() >= 2 && &head[..2] == magic {
+        return Ok(());
+    }
+    let hex: Vec<String> = head.iter().map(|b| format!("{b:02x}")).collect();
+    Err(GovmError::NotAnArchive {
+        kind: if is_tar { "tar.gz" } else { "zip" }.to_string(),
+        head: hex.join(" "),
+        url: url.to_string(),
+    })
+}
+
+// -------------------------------------- Internal Helpers -------------------------------------- //
+
+/// Best-effort reader of a file's first `n` bytes, used for magic-byte sniffing.
+/// Returns `None` if the file can't be opened/read (validation then fails safely).
+fn read_head(path: &std::path::Path, n: usize) -> Option<Vec<u8>> {
+    let mut file = File::open(path).ok()?;
+    let mut buf = vec![0u8; n];
+    let read = file.read(&mut buf).ok()?;
+    buf.truncate(read);
+    Some(buf)
 }
