@@ -1,16 +1,23 @@
 # GoVMR - Go Version Manager (Rust Edition)
 
-A high-performance, asynchronous Go Version Manager written in Rust. GoVMR features a rich, interactive Terminal User
-Interface (TUI) powered by Ratatui, as well as a full-featured Command Line Interface (CLI) for scripting and
-automation.
+A high-performance, asynchronous Go Version Manager written in Rust. GoVMR features a slick, interactive Terminal User
+Interface (TUI) powered by Ratatui, as well as a full-featured Command Line Interface (CLI)
+for scripting and automation.
 
 ## Features
 
 - **Blazing Fast & Lightweight**: Zero external runtime dependencies; compiled directly to a standalone native binary.
 - **Asynchronous Network & Streaming**: Concurrent downloads and in-memory archive extraction using Tokio, Reqwest,
   Flate2, and Tar/Zip.
-- **Interactive TUI**: Built with Ratatui and Crossterm, featuring live installation feedback, status dashboards, and
-  keyboard navigation.
+- **Interactive TUI**: A modern Ratatui dashboard with:
+    - **Live download progress modal** — animated gauge with percent, downloaded/total size, speed and ETA, followed by
+      a dedicated "extracting" phase.
+    - Live version search/filter, tab counts, archive sizes, and stable/rc badges.
+    - Animated braille spinners for every background task (refresh, switch, delete, install).
+    - Rounded-corners Go-cyan theme, branded header showing the active version, and an inline PATH-setup help overlay
+      (`h`).
+    - Keyboard navigation (vim keys + arrows).
+- **CLI progress bar**: `govmr install` shows a colored byte/speed/ETA bar that morphs into a spinner during extraction.
 - **Non-Destructive Version Switching**: Uses executable shims (`~/.govmr/shim`) to instantly switch active versions
   without modifying global binary paths.
 - **Cross-Platform**: Full support for Linux, macOS, and Windows.
@@ -39,7 +46,7 @@ cargo install govmr
 Ensure you have Rust and Cargo installed:
 
 ```bash
-git clone [https://github.com/melkeydev/govmr.git](https://github.com/melkeydev/govmr.git)
+git clone https://github.com/seyallius/govmr.git
 cd govmr
 cargo build --release
 ```
@@ -58,8 +65,9 @@ copy target\release\govmr.exe C:\Windows\System32\
 
 ## Shell Configuration (First-Time Setup)
 
-GoVMR uses executable shims located in `~/.govmr/shim`. Add this directory to your shell configuration so `go` resolves
-through GoVMR.
+GoVMR uses executable shims located in `~/.govmr/shim`. Add this directory to your shell configuration so `go`
+resolves through GoVMR. A guided setup screen appears automatically the first time you run the TUI, and you can re-open
+it any time with `h`.
 
 ### Linux & macOS
 
@@ -99,26 +107,30 @@ govmr
 
 #### Keybindings
 
-* `Up` / `k`: Move selection up.
-* `Down` / `j`: Move selection down.
-* `Tab`: Switch between **Available Versions** and **Installed Versions** views.
-* `i`: Download and install the selected version.
-* `u`: Switch active Go version to the selected release.
-* `d`: Delete the selected installed version (prompts confirmation).
-* `r`: Refresh remote version manifests from `go.dev`.
-* `q` / `Ctrl+C`: Exit GoVMR.
+| Key            | Action                                                                    |
+|----------------|---------------------------------------------------------------------------|
+| `↑` / `k`      | Move selection up                                                         |
+| `↓` / `j`      | Move selection down                                                       |
+| `Tab` / `t`    | Switch between **Available** and **Installed** views                      |
+| `/`            | Open the live search/filter (type, then `Enter` to apply, `Esc` to clear) |
+| `i`            | Download and install the selected version (shows the progress modal)      |
+| `u`            | Switch the active Go version to the selected release                      |
+| `d`            | Delete the selected installed version (asks for confirmation)             |
+| `r`            | Refresh the remote version manifest from `go.dev`                         |
+| `h` / `?`      | Open the PATH-setup help overlay                                          |
+| `q` / `Ctrl+C` | Exit GoVMR                                                                |
 
 ### CLI Commands
 
 ```bash
-# Install a specific or partial Go release
+# Install a specific or partial Go release (with a live download progress bar)
 govmr install 1.22
 govmr install 1.21.6
 
 # Switch active Go version
 govmr use 1.22
 
-# List installed versions and show current active version
+# List installed versions and show the current active version
 govmr list
 
 # Delete an installed Go release
@@ -132,13 +144,22 @@ govmr --help
 
 ## Architecture Overview
 
-* **`src/manager.rs`**: Core orchestrator managing remote version manifests, asynchronous streaming, decompression, and
-  disk persistence.
+* **`src/manager.rs`**: Core orchestrator managing remote version manifests, asynchronous streaming (with
+  `InstallProgress` events for download speed/ETA and extraction phase), decompression, and disk persistence.
 * **`src/shim.rs`**: Manages shell wrappers inside `~/.govmr/shim` to forward execution to the currently active Go
   binary.
-* **`src/tui/`**: Pure terminal UI rendering widgets, state transitions, color themes, and first-time setup flows via
-  Ratatui.
-* **`src/cli.rs`**: Subcommand definitions and execution pathways using Clap.
+* **`src/tui/`**: Terminal UI — `views.rs` (dashboard, lists, modals, gauges), `styles.rs` (Go-cyan theme), and
+  `setup.rs` (onboarding / help overlay) — via Ratatui.
+* **`src/cli.rs`**: Subcommand definitions and execution pathways using Clap and Indicatif.
+
+## Testing
+
+Headless rendering tests draw every screen state (tabs, filter, install/extraction modals, delete confirmation, PATH
+warning) into an in-memory buffer:
+
+```bash
+cargo test
+```
 
 ## License
 

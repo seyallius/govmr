@@ -1,6 +1,6 @@
 //! Copyright (c) 2026 SeyedAli
 //! Licensed under the MIT License. See LICENSE file in the project root for details.
-//!
+//
 //! Module shim - Shim generation and PATH validation utilities.
 
 use crate::errors::GovmError;
@@ -8,9 +8,10 @@ use std::{
     env,
     fs::{self, File},
     io::Write,
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 // ------------------------------------------ Types & Impls ------------------------------------- //
 

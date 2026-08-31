@@ -1,6 +1,6 @@
 //! Copyright (c) 2026 SeyedAli
 //! Licensed under the MIT License. See LICENSE file in the project root for details.
-//!
+//
 //! Module errors - Domain-specific error types for GoVMR operations.
 
 use thiserror::Error;

@@ -1,20 +1,100 @@
 //! Copyright (c) 2026 SeyedAli
 //! Licensed under the MIT License. See LICENSE file in the project root for details.
-//!
+//
 //! Module app - Central state container and action dispatcher for interactive TUI execution.
 
-use crate::{manager::GoManager, models::GoVersion};
+use crate::{
+    manager::{GoManager, InstallProgress},
+    models::GoVersion,
+};
 use ratatui::widgets::ListState;
 use std::sync::Arc;
+use std::time::Instant;
 
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// Identifies the currently active tab view in the TUI.
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ActiveTab {
     /// Browsing all official remote versions.
     Available,
     /// Browsing locally installed toolchains.
     Installed,
+}
+impl ActiveTab {
+    /// Flips to the other tab.
+    pub fn toggle(self) -> Self {
+        match self {
+            ActiveTab::Available => ActiveTab::Installed,
+            ActiveTab::Installed => ActiveTab::Available,
+        }
+    }
+}
+
+/// Severity of a transient status message.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum MsgKind {
+    /// Positive confirmation.
+    Success,
+    /// Failure or destructive warning.
+    Error,
+    /// Neutral informational note.
+    Info,
+}
+
+/// A transient status-bar message.
+#[derive(Clone)]
+pub struct StatusMessage {
+    /// Human-readable text.
+    pub text: String,
+    /// Visual severity.
+    pub kind: MsgKind,
+}
+
+/// Lifecycle phase of a running installation.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Phase {
+    /// The archive is being downloaded.
+    Downloading,
+    /// The archive is being extracted to disk.
+    Extracting,
+}
+
+/// Background task state surfaced to the UI.
+#[derive(Clone)]
+pub enum BusyState {
+    /// Refreshing the version manifest from `go.dev`.
+    Refreshing,
+    /// Switching the active toolchain.
+    Switching(String),
+    /// Removing an installed toolchain.
+    Deleting(String),
+    /// Installing a toolchain, with live progress.
+    Installing {
+        /// Version being installed.
+        version: String,
+        /// Current lifecycle phase.
+        phase: Phase,
+        /// Bytes fetched so far.
+        downloaded: u64,
+        /// Total archive size in bytes.
+        total: u64,
+        /// Download speed in bytes per second.
+        speed: f64,
+        /// When the download started (for ETA calculations).
+        started_at: Instant,
+    },
+}
+impl BusyState {
+    /// Returns the version targeted by the busy operation, if any.
+    pub fn target(&self) -> Option<&str> {
+        match self {
+            BusyState::Refreshing => None,
+            BusyState::Switching(v) | BusyState::Deleting(v) | BusyState::Installing { version: v, .. } => {
+                Some(v)
+            }
+        }
+    }
 }
 
 /// Holds all state variables required for rendering and interacting with the TUI.
@@ -25,16 +105,24 @@ pub struct AppState {
     pub list_state: ListState,
     /// The currently selected tab view.
     pub active_tab: ActiveTab,
-    /// Indicates whether a background task is executing.
-    pub loading: bool,
-    /// The version string currently undergoing installation or processing.
-    pub action_target: Option<String>,
-    /// Status or error banner message `(message_text, is_error)`.
-    pub status_message: Option<(String, bool)>,
+    /// Current background task, if any.
+    pub busy: Option<BusyState>,
+    /// Transient status-bar message.
+    pub status_message: Option<StatusMessage>,
     /// Targeted version pending user deletion confirmation.
     pub confirming_delete: Option<String>,
     /// Indicates whether the GoVMR shim path is configured in system `PATH`.
     pub is_shim_in_path: bool,
+    /// Filesystem path to the shim directory (shown in the help overlay).
+    pub shim_path: String,
+    /// Live filter query applied to the current view.
+    pub filter: String,
+    /// Whether the user is actively typing a filter query.
+    pub filter_mode: bool,
+    /// Whether the PATH-setup help overlay is displayed.
+    pub show_help: bool,
+    /// Monotonic render counter used to drive spinner animations.
+    pub tick_count: u64,
 }
 
 /// Actions dispatched asynchronously to execute backend operations.
@@ -43,10 +131,103 @@ pub enum Action {
     Refresh,
     /// Download and install the specified Go version.
     Install(GoVersion),
+    /// A progress event emitted mid-installation.
+    InstallProgress(InstallProgress),
+    /// Installation finished successfully.
+    InstallDone(GoVersion),
+    /// Installation failed with the supplied message.
+    InstallFailed(String),
     /// Activate the specified Go version via shims.
     Use(GoVersion),
     /// Remove an installed Go version from disk.
     Delete(GoVersion),
+}
+
+/// Returns indices into [`AppState::versions`] visible under the given state's tab and filter.
+pub fn visible_indices(state: &AppState) -> Vec<usize> {
+    let query = state.filter.to_lowercase();
+    state
+        .versions
+        .iter()
+        .enumerate()
+        .filter(|(_, v)| match state.active_tab {
+            ActiveTab::Available => true,
+            ActiveTab::Installed => v.installed,
+        })
+        .filter(|(_, v)| {
+            query.is_empty()
+                || v.raw_version.to_lowercase().contains(&query)
+                || v.display_name.to_lowercase().contains(&query)
+        })
+        .map(|(i, _)| i)
+        .collect()
+}
+
+impl AppState {
+    /// Constructs a fresh state for the supplied version list (used by tests/setup).
+    pub fn from_versions(versions: Vec<GoVersion>, is_shim_in_path: bool) -> Self {
+        let mut list_state = ListState::default();
+        if !versions.is_empty() {
+            list_state.select(Some(0));
+        }
+        Self {
+            versions,
+            list_state,
+            active_tab: ActiveTab::Available,
+            busy: None,
+            status_message: None,
+            confirming_delete: None,
+            is_shim_in_path,
+            shim_path: String::from("~/.govmr/shim"),
+            filter: String::new(),
+            filter_mode: false,
+            show_help: false,
+            tick_count: 0,
+        }
+    }
+
+    /// Returns indices into `versions` visible under the current tab and filter.
+    pub fn visible_indices(&self) -> Vec<usize> {
+        visible_indices(self)
+    }
+
+    /// Keeps the selection index within the bounds of the currently visible list.
+    pub fn clamp_selection(&mut self) {
+        let len = self.visible_indices().len();
+        match self.list_state.selected() {
+            Some(i) if len > 0 && i >= len => self.list_state.select(Some(len - 1)),
+            Some(_) => {}
+            None if len > 0 => self.list_state.select(Some(0)),
+            None => {}
+        }
+    }
+
+    /// Moves the active selection cursor to the next visible item (wraps around).
+    pub fn next_item(&mut self) {
+        let len = self.visible_indices().len();
+        if len == 0 {
+            return;
+        }
+        let i = match self.list_state.selected() {
+            Some(i) => (i + 1) % len,
+            None => 0,
+        };
+        self.list_state.select(Some(i));
+    }
+
+    /// Moves the active selection cursor to the previous visible item (wraps around).
+    pub fn previous_item(&mut self) {
+        let len = self.visible_indices().len();
+        if len == 0 {
+            return;
+        }
+        let i = match self.list_state.selected() {
+            Some(0) => len - 1,
+            Some(i) => i - 1,
+            None => 0,
+        };
+        self.list_state.select(Some(i));
+    }
 }
 
 /// Main application controller holding application state and business logic references.
@@ -60,76 +241,127 @@ impl App {
     // ----------------------------------------- Public API ----------------------------------------- //
 
     /// Instantiates a new application controller, performing initial version manifest loading.
-    pub async fn new(manager: Arc<GoManager>) -> Self {
+    pub async fn new(manager: Arc<GoManager>, shim_path: String) -> Self {
         let is_in_path = manager.get_shim_manager().is_in_path();
         let mut app = Self {
             state: AppState {
                 versions: Vec::new(),
                 list_state: ListState::default(),
                 active_tab: ActiveTab::Available,
-                loading: true,
-                action_target: None,
+                busy: None,
                 status_message: None,
                 confirming_delete: None,
                 is_shim_in_path: is_in_path,
+                shim_path,
+                filter: String::new(),
+                filter_mode: false,
+                show_help: false,
+                tick_count: 0,
             },
             manager,
         };
+        app.state.busy = Some(BusyState::Refreshing);
         app.refresh_versions().await;
         app
     }
 
     /// Asynchronously refreshes the version list from the GoManager.
     pub async fn refresh_versions(&mut self) {
-        self.state.loading = true;
         match self.manager.fetch_versions().await {
             Ok(versions) => {
                 self.state.versions = versions;
-                if !self.state.versions.is_empty() && self.state.list_state.selected().is_none() {
-                    self.state.list_state.select(Some(0));
-                }
                 self.state.status_message = None;
+                self.clamp_selection();
             }
             Err(e) => {
-                self.state.status_message = Some((e.to_string(), true));
+                self.set_status(e.to_string(), MsgKind::Error);
             }
         }
-        self.state.loading = false;
     }
 
-    /// Returns a reference to the currently highlighted [`GoVersion`], if any.
+    /// Records a transient status message.
+    pub fn set_status(&mut self, text: impl Into<String>, kind: MsgKind) {
+        self.state.status_message = Some(StatusMessage {
+            text: text.into(),
+            kind,
+        });
+    }
+
+    /// Whether a background task is currently blocking new actions.
+    pub fn is_busy(&self) -> bool {
+        self.state.busy.is_some()
+    }
+
+    /// Returns indices into [`AppState::versions`] visible under the current tab and filter.
+    pub fn visible_indices(&self) -> Vec<usize> {
+        visible_indices(&self.state)
+    }
+
+    /// Returns the currently selected [`GoVersion`], honoring tab and filter visibility.
     pub fn selected_version(&self) -> Option<&GoVersion> {
-        let idx = self.state.list_state.selected()?;
-        self.state.versions.get(idx)
+        let visible = self.visible_indices();
+        let pos = self.state.list_state.selected()?;
+        visible.get(pos).map(|&i| &self.state.versions[i])
     }
 
-    /// Moves the active selection cursor to the next item in the list.
+    /// Switches to the other tab and resets navigation.
+    pub fn switch_tab(&mut self) {
+        self.state.active_tab = self.state.active_tab.toggle();
+        self.state.list_state.select(Some(0));
+    }
+
+    /// Keeps the selection index within the bounds of the currently visible list.
+    pub fn clamp_selection(&mut self) {
+        self.state.clamp_selection();
+    }
+
+    /// Moves the active selection cursor to the next visible item.
     pub fn next_item(&mut self) {
-        if self.state.versions.is_empty() {
-            return;
-        }
-        let i = match self.state.list_state.selected() {
-            Some(i) => (i + 1) % self.state.versions.len(),
-            None => 0,
-        };
-        self.state.list_state.select(Some(i));
+        self.state.next_item();
     }
 
-    /// Moves the active selection cursor to the previous item in the list.
+    /// Moves the active selection cursor to the previous visible item.
     pub fn previous_item(&mut self) {
-        if self.state.versions.is_empty() {
-            return;
-        }
-        let i = match self.state.list_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.state.versions.len() - 1
-                } else {
-                    i - 1
+        self.state.previous_item();
+    }
+
+    /// Applies a [`InstallProgress`] event to the active installation state.
+    pub fn update_install_progress(&mut self, progress: InstallProgress) {
+        if let Some(BusyState::Installing {
+            version,
+            phase: _,
+            downloaded,
+            total,
+            speed,
+            started_at,
+        }) = self.state.busy.clone()
+        {
+            match progress {
+                InstallProgress::Downloading {
+                    downloaded: d,
+                    total: t,
+                    bytes_per_sec,
+                } => {
+                    self.state.busy = Some(BusyState::Installing {
+                        version,
+                        phase: Phase::Downloading,
+                        downloaded: d,
+                        total: t,
+                        speed: bytes_per_sec,
+                        started_at,
+                    });
+                }
+                InstallProgress::Extracting => {
+                    self.state.busy = Some(BusyState::Installing {
+                        version,
+                        phase: Phase::Extracting,
+                        downloaded,
+                        total,
+                        speed,
+                        started_at,
+                    });
                 }
             }
-            None => 0,
-        };
-        self.state.list_state.select(Some(i));
+        }
     }
 }

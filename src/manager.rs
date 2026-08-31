@@ -1,6 +1,6 @@
 //! Copyright (c) 2026 SeyedAli
 //! Licensed under the MIT License. See LICENSE file in the project root for details.
-//!
+//
 //! Module manager - Core lifecycle coordinator for fetching, installing, switching, and deleting Go versions.
 
 use crate::{
@@ -13,10 +13,27 @@ use std::{
     env::consts::{ARCH, OS},
     fs::{self, File},
     path::PathBuf,
+    time::{Duration, Instant},
 };
 use tokio::io::AsyncWriteExt;
 
 // ------------------------------------------ Types & Impls ------------------------------------- //
+
+/// Lifecycle progress events emitted while a toolchain is being installed.
+#[derive(Debug, Clone)]
+pub enum InstallProgress {
+    /// A chunk of the archive finished downloading.
+    Downloading {
+        /// Number of bytes downloaded so far.
+        downloaded: u64,
+        /// Total archive size in bytes (0 if the server did not report it).
+        total: u64,
+        /// Smoothed download speed in bytes per second.
+        bytes_per_sec: f64,
+    },
+    /// The archive has finished downloading and is being unpacked to disk.
+    Extracting,
+}
 
 /// Primary orchestrator managing installed toolchains, downloads, and version switching.
 pub struct GoManager {
@@ -52,7 +69,9 @@ impl GoManager {
             versions_dir,
             downloads_dir,
             shim_mgr: ShimManager::new()?,
-            client: reqwest::Client::builder().build()?,
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(300))
+                .build()?,
         })
     }
 
@@ -106,6 +125,7 @@ impl GoManager {
                     display_name: format!("go{}", ver_clean),
                     filename: file.filename.clone(),
                     url: format!("https://go.dev/dl/{}", file.filename),
+                    size: file.size as u64,
                     installed,
                     active,
                     path: if installed { Some(install_dir) } else { None },
@@ -122,7 +142,7 @@ impl GoManager {
     ///
     /// # Arguments
     /// * `version` - The version metadata to install.
-    /// * `progress` - Callback invoked with fractional progress (0.0 to 1.0).
+    /// * `progress` - Callback invoked with [`InstallProgress`] events as the install advances.
     ///
     /// # Errors
     /// Returns [`GovmError`] on download failure, IO interruption, or extraction error.
@@ -132,26 +152,67 @@ impl GoManager {
         progress: F,
     ) -> Result<PathBuf, GovmError>
     where
-        F: Fn(f64) + Send + 'static,
+        F: Fn(InstallProgress) + Send + 'static,
     {
         let download_path = self.downloads_dir.join(&version.filename);
         let target_dir = self.versions_dir.join(format!("go{}", version.raw_version));
 
         let res = self.client.get(&version.url).send().await?;
-        let total_size = res.content_length().unwrap_or(0);
+        let total_size = res.content_length().unwrap_or(version.size);
         let mut downloaded: u64 = 0;
         let mut stream = res.bytes_stream();
+
+        // Throttling / speed estimation state.
+        let mut last_report = Instant::now();
+        let mut last_bytes: u64 = 0;
+        let mut smoothed_speed: f64 = 0.0;
+        let mut last_pct_reported: u8 = 0;
 
         let mut file = tokio::fs::File::create(&download_path).await?;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
             file.write_all(&chunk).await?;
             downloaded += chunk.len() as u64;
-            if total_size > 0 {
-                progress(downloaded as f64 / total_size as f64);
+
+            // Emit progress at most ~4x per second, or whenever a whole percent is crossed,
+            // so high-frequency chunk arrivals don't flood the UI.
+            let now = Instant::now();
+            let elapsed = now.duration_since(last_report).as_secs_f64();
+            if elapsed >= 0.25 || total_size == 0 {
+                let instant_speed = (downloaded - last_bytes) as f64 / elapsed.max(1e-3);
+                // Exponential moving average for a smoother speed readout.
+                smoothed_speed = if smoothed_speed == 0.0 {
+                    instant_speed
+                } else {
+                    smoothed_speed * 0.6 + instant_speed * 0.4
+                };
+
+                let pct = if total_size > 0 {
+                    ((downloaded as f64 / total_size as f64) * 100.0) as u8
+                } else {
+                    0
+                };
+                if elapsed >= 0.25 || pct > last_pct_reported || total_size == 0 {
+                    progress(InstallProgress::Downloading {
+                        downloaded,
+                        total: total_size,
+                        bytes_per_sec: smoothed_speed,
+                    });
+                    last_pct_reported = pct;
+                    last_report = now;
+                    last_bytes = downloaded;
+                }
             }
         }
         file.flush().await?;
+
+        // Final 100% report, then flip to the extraction phase.
+        progress(InstallProgress::Downloading {
+            downloaded,
+            total: total_size,
+            bytes_per_sec: smoothed_speed,
+        });
+        progress(InstallProgress::Extracting);
 
         if target_dir.exists() {
             fs::remove_dir_all(&target_dir)?;
