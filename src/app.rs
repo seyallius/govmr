@@ -91,9 +91,9 @@ impl BusyState {
     pub fn target(&self) -> Option<&str> {
         match self {
             BusyState::Refreshing => None,
-            BusyState::Switching(v) | BusyState::Deleting(v) | BusyState::Installing { version: v, .. } => {
-                Some(v)
-            }
+            BusyState::Switching(v)
+            | BusyState::Deleting(v)
+            | BusyState::Installing { version: v, .. } => Some(v),
         }
     }
 }
@@ -131,45 +131,6 @@ pub struct AppState {
     /// Monotonic render counter used to drive spinner animations.
     pub tick_count: u64,
 }
-
-/// Actions dispatched asynchronously to execute backend operations.
-pub enum Action {
-    /// Reload remote version list from `go.dev`.
-    Refresh,
-    /// Download and install the specified Go version.
-    Install(GoVersion),
-    /// A progress event emitted mid-installation.
-    InstallProgress(InstallProgress),
-    /// Installation finished successfully.
-    InstallDone(GoVersion),
-    /// Installation failed with the supplied message.
-    InstallFailed(String),
-    /// Activate the specified Go version via shims.
-    Use(GoVersion),
-    /// Remove an installed Go version from disk.
-    Delete(GoVersion),
-}
-
-/// Returns indices into [`AppState::versions`] visible under the given state's tab and filter.
-pub fn visible_indices(state: &AppState) -> Vec<usize> {
-    let query = state.filter.to_lowercase();
-    state
-        .versions
-        .iter()
-        .enumerate()
-        .filter(|(_, v)| match state.active_tab {
-            ActiveTab::Available => true,
-            ActiveTab::Installed => v.installed,
-        })
-        .filter(|(_, v)| {
-            query.is_empty()
-                || v.raw_version.to_lowercase().contains(&query)
-                || v.display_name.to_lowercase().contains(&query)
-        })
-        .map(|(i, _)| i)
-        .collect()
-}
-
 impl AppState {
     /// Constructs a fresh state for the supplied version list (used by tests/setup).
     pub fn from_versions(versions: Vec<GoVersion>, is_shim_in_path: bool) -> Self {
@@ -239,6 +200,24 @@ impl AppState {
         };
         self.list_state.select(Some(i));
     }
+}
+
+/// Actions dispatched asynchronously to execute backend operations.
+pub enum Action {
+    /// Reload remote version list from `go.dev`.
+    Refresh,
+    /// Download and install the specified Go version.
+    Install(GoVersion),
+    /// A progress event emitted mid-installation.
+    InstallProgress(InstallProgress),
+    /// Installation finished successfully.
+    InstallDone(GoVersion),
+    /// Installation failed with the supplied message.
+    InstallFailed(String),
+    /// Activate the specified Go version via shims.
+    Use(GoVersion),
+    /// Remove an installed Go version from disk.
+    Delete(GoVersion),
 }
 
 /// Main application controller holding application state and business logic references.
@@ -437,4 +416,26 @@ impl App {
             }
         }
     }
+}
+
+// ----------------------------------------- Public API ----------------------------------------- //
+
+/// Returns indices into [`AppState::versions`] visible under the given state's tab and filter.
+pub fn visible_indices(state: &AppState) -> Vec<usize> {
+    let query = state.filter.to_lowercase();
+    state
+        .versions
+        .iter()
+        .enumerate()
+        .filter(|(_, v)| match state.active_tab {
+            ActiveTab::Available => true,
+            ActiveTab::Installed => v.installed,
+        })
+        .filter(|(_, v)| {
+            query.is_empty()
+                || v.raw_version.to_lowercase().contains(&query)
+                || v.display_name.to_lowercase().contains(&query)
+        })
+        .map(|(i, _)| i)
+        .collect()
 }
