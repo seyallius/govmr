@@ -4,15 +4,18 @@
 //! Module manager - Core lifecycle coordinator for fetching, installing, switching, and deleting Go versions.
 
 use crate::{
+    config::Config,
     errors::GovmError,
     models::{GoRelease, GoVersion},
     shim::ShimManager,
+    theme::{Theme, ThemeName},
 };
-use futures::StreamExt;
+use futures_util::StreamExt;
 use std::{
     env::consts::{ARCH, OS},
     fs::{self, File},
     path::PathBuf,
+    sync::Mutex,
     time::{Duration, Instant},
 };
 use tokio::io::AsyncWriteExt;
@@ -45,6 +48,9 @@ pub struct GoManager {
     downloads_dir: PathBuf,
     /// Handler for creating and managing executable binary shims.
     shim_mgr: ShimManager,
+    /// Persisted user preferences (color theme, …), mutable behind a lock so the
+    /// theme can be switched from the `Arc<GoManager>` used by the TUI and CLI.
+    config: Mutex<Config>,
     /// Reusable asynchronous HTTP client for network operations.
     client: reqwest::Client,
 }
@@ -64,11 +70,14 @@ impl GoManager {
         fs::create_dir_all(&versions_dir)?;
         fs::create_dir_all(&downloads_dir)?;
 
+        let config = Mutex::new(Config::load(&base_dir));
+
         Ok(Self {
             base_dir,
             versions_dir,
             downloads_dir,
             shim_mgr: ShimManager::new()?,
+            config,
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(300))
                 .build()?,
@@ -78,6 +87,22 @@ impl GoManager {
     /// Provides access to the underlying [`ShimManager`].
     pub fn get_shim_manager(&self) -> &ShimManager {
         &self.shim_mgr
+    }
+
+    /// Returns the user's currently selected color theme.
+    pub fn theme_name(&self) -> ThemeName {
+        self.config.lock().expect("config lock").theme
+    }
+
+    /// Returns the concrete palette for the currently selected theme.
+    pub fn theme(&self) -> Theme {
+        Theme::for_name(self.theme_name())
+    }
+
+    /// Persists a new color-theme choice and returns the resulting palette.
+    pub fn set_theme(&self, theme: ThemeName) -> Result<Theme, GovmError> {
+        self.config.lock().expect("config lock").set_theme(theme)?;
+        Ok(Theme::for_name(theme))
     }
 
     /// Retrieves the currently active Go version string from disk, if set.

@@ -4,6 +4,8 @@
 //! Module cli - Command-line interface definitions and subcommand handlers.
 
 use crate::manager::{GoManager, InstallProgress};
+use crate::models::{GoVersion, resolve_version};
+use crate::theme::ThemeName;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -99,7 +101,30 @@ pub enum Commands {
     },
     /// List all locally installed Go versions.
     List,
+    /// View or change the TUI color theme.
+    Theme {
+        /// Apply a theme by name (e.g. `midnight`); omit to list themes.
+        #[arg(value_parser = parse_theme)]
+        name: Option<ThemeName>,
+    },
 }
+
+/// Clap value parser mapping a theme key/title to a [`ThemeName`].
+fn parse_theme(raw: &str) -> Result<ThemeName, String> {
+    ThemeName::from_key(raw).ok_or_else(|| {
+        format!(
+            "unknown theme '{}'. Available: {}",
+            raw,
+            ThemeName::ALL
+                .iter()
+                .map(|t| t.key())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    })
+}
+
+// ------------------------------------------- ANSI ---------------------------------------- //
 
 // ------------------------------------------- Tiny ANSI ---------------------------------------- //
 
@@ -226,6 +251,34 @@ pub async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
                     );
                 } else {
                     println!("  {} {}", paint(GREY, "○"), paint(GREY, &v.raw_version));
+                }
+            }
+        }
+        Some(Commands::Theme { name }) => {
+            match name {
+                Some(name) => {
+                    manager.set_theme(name)?;
+                    println!(
+                        "{} Theme set to {} (saved to ~/.govmr/config)",
+                        paint(GREEN, "🎨"),
+                        paint(CYAN, name.title())
+                    );
+                }
+                None => {
+                    let current = manager.theme_name();
+                    println!("{}", paint(CYAN, "Available themes:"));
+                    for t in ThemeName::ALL {
+                        if t == current {
+                            println!("  {} {} {}", paint(GREEN, "●"), paint(GREEN, t.key()), paint(GREEN, "(current)"));
+                        } else {
+                            println!("  {} {:<10} {}", paint(GREY, "○"), t.key(), paint(GREY, t.title()));
+                        }
+                    }
+                    println!(
+                        "\nSwitch with {} — e.g. {}",
+                        paint(CYAN, "govmr theme <name>"),
+                        paint(CYAN, "govmr theme midnight")
+                    );
                 }
             }
         }

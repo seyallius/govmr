@@ -112,4 +112,8 @@ fn main() {
         s.show_help = true;
         s.shim_path = "/home/ali/.govmr/shim".into();
     });
+    dump("THEME PICKER", |s| {
+        s.show_theme_picker = true;
+        s.theme_picker_index = 1;
+    });
 }

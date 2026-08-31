@@ -3,9 +3,10 @@
 //
 //! Module views - Main layout composition, widget rendering, and modal views for Ratatui.
 
-use super::styles::Theme;
+use super::setup::draw_setup_modal;
 use crate::app::{visible_indices, ActiveTab, AppState, BusyState, MsgKind, Phase};
 use crate::models::GoVersion;
+use crate::theme::{Theme, ThemeName};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
@@ -29,12 +30,13 @@ const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 pub fn render(frame: &mut Frame, state: &mut AppState) {
     state.tick_count = state.tick_count.wrapping_add(1);
     let size = frame.area();
+    let theme = state.theme;
 
     // ---- Outer branded container ------------------------------------------------------------ //
     let title = Line::from(vec![
-        Span::styled(" 🔧 ", Style::default().fg(Theme::BRAND)),
-        Span::styled("GoVMR", Theme::brand_bold()),
-        Span::styled(" — Go Version Manager ", Theme::muted()),
+        Span::styled(" 🔧 ", Style::default().fg(theme.brand)),
+        Span::styled("GoVMR", theme.brand_bold()),
+        Span::styled(" — Go Version Manager ", theme.muted()),
     ]);
 
     let right_title = state
@@ -43,8 +45,8 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         .find(|v| v.active)
         .map(|v| {
             Line::from(vec![
-                Span::styled(" active: ", Theme::muted()),
-                Span::styled(v.display_name.clone(), Theme::badge_active()),
+                Span::styled(" active: ", theme.muted()),
+                Span::styled(v.display_name.clone(), theme.badge_active()),
                 Span::raw("  "),
             ])
         })
@@ -53,7 +55,7 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     let main_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Theme::border())
+        .border_style(theme.border())
         .title(title)
         .title_alignment(Alignment::Left)
         .title(right_title)
@@ -81,15 +83,16 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         .constraints(constraints)
         .split(inner);
 
-    // A centered modal covers the banner / chrome areas; hide the pieces that
-    // would otherwise bleed through the modal edges.
+    // A centered modal covers the chrome areas; hide the pieces that would
+    // otherwise bleed through the modal edges.
     let modal_active = matches!(state.busy, Some(BusyState::Installing { .. }))
         || state.confirming_delete.is_some()
-        || state.show_help;
+        || state.show_help
+        || state.show_theme_picker;
 
     let mut idx = 0;
     if show_warning && !modal_active {
-        render_warning(frame, chunks[idx]);
+        render_warning(frame, chunks[idx], &theme);
         idx += 1;
     }
     let tabs_chunk = chunks[idx];
@@ -101,69 +104,68 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     let footer_chunk = chunks[idx];
 
     if !modal_active {
-        render_tabs(frame, tabs_chunk, state);
+        render_tabs(frame, tabs_chunk, state, &theme);
     }
-    render_content(frame, content_chunk, state);
+    render_content(frame, content_chunk, state, &theme);
     if !modal_active {
-        render_status_bar(frame, status_chunk, state);
-        render_footer(frame, footer_chunk, state);
+        render_status_bar(frame, status_chunk, state, &theme);
+        render_footer(frame, footer_chunk, state, &theme);
     }
-
-    // NOTE: Overlays (modals) are rendered by [`render_overlays`] *after* the
-    // base chrome so they paint on top of the content block; they issue their
-    // own `Clear` to wipe whatever sits beneath them.
 }
 
-/// Draws top-level modal overlays (install progress, delete confirmation, help).
+/// Draws top-level modal overlays (theme picker, install progress, delete, help).
 pub fn render_overlays(frame: &mut Frame, state: &AppState) {
     let size = frame.area();
+    let theme = state.theme;
+
     if let Some(busy) = &state.busy {
         if matches!(busy, BusyState::Installing { .. }) {
-            render_install_modal(frame, size, busy, state.tick_count);
+            render_install_modal(frame, size, busy, state.tick_count, &theme);
         }
     }
 
     if state.confirming_delete.is_some() {
-        render_delete_modal(frame, size, state);
+        render_delete_modal(frame, size, state, &theme);
     }
 
     if state.show_help {
-        super::setup::draw_setup_modal(frame, size, &state.shim_path);
+        draw_setup_modal(frame, size, &state.shim_path, &theme);
+    }
+
+    if state.show_theme_picker {
+        render_theme_picker(frame, size, state, &theme);
     }
 }
 
 // ---------------------------------------- Chrome pieces --------------------------------------- //
 
 /// Renders the amber PATH-warning banner.
-fn render_warning(frame: &mut Frame, area: Rect) {
+fn render_warning(frame: &mut Frame, area: Rect, theme: &Theme) {
     let banner = Paragraph::new(Line::from(vec![
-        Span::styled(" ⚠ ", Theme::warning().add_modifier(Modifier::BOLD)),
-        Span::styled(
-            " GoVMR shim is not on your PATH — press ",
-            Theme::warning(),
-        ),
-        Span::styled("h", Theme::key_hint()),
-        Span::styled(" for setup help.", Theme::warning()),
+        Span::styled(" ⚠ ", theme.warning().add_modifier(Modifier::BOLD)),
+        Span::styled(" GoVMR shim is not on your PATH — press ", theme.warning()),
+        Span::styled("h", theme.key_hint()),
+        Span::styled(" for setup help.", theme.warning()),
     ]))
     .block(
         Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Theme::warning()),
+            .border_style(theme.warning()),
     );
     frame.render_widget(banner, area);
 }
 
 /// Renders the tab strip with per-tab counts.
-fn render_tabs(frame: &mut Frame, area: Rect, state: &AppState) {
+fn render_tabs(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
     let installed_count = state.versions.iter().filter(|v| v.installed).count();
     let available_count = state.versions.len();
 
     let tab = |name: &'static str, count: usize, active: bool| {
         let style = if active {
-            Theme::tab_active()
+            theme.tab_active()
         } else {
-            Theme::tab_inactive()
+            theme.tab_inactive()
         };
         Line::from(vec![
             Span::styled(if active { "● " } else { "○ " }, style),
@@ -171,9 +173,9 @@ fn render_tabs(frame: &mut Frame, area: Rect, state: &AppState) {
             Span::styled(
                 format!(" ({})", count),
                 if active {
-                    Theme::badge_active()
+                    theme.badge_active()
                 } else {
-                    Theme::muted()
+                    theme.muted()
                 },
             ),
         ])
@@ -189,25 +191,26 @@ fn render_tabs(frame: &mut Frame, area: Rect, state: &AppState) {
             ActiveTab::Available => 0,
             ActiveTab::Installed => 1,
         })
-        .divider(Span::styled("│", Theme::muted()))
+        .divider(Span::styled("│", theme.muted()))
         .block(
             Block::default()
                 .borders(Borders::BOTTOM)
-                .border_style(Theme::border()),
+                .border_style(theme.border()),
         )
-        .highlight_style(Theme::brand_bold());
+        .highlight_style(theme.brand_bold());
     frame.render_widget(tabs, area);
 }
 
 /// Renders the active tab's content list.
-fn render_content(frame: &mut Frame, area: Rect, state: &mut AppState) {
+fn render_content(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) {
     let visible: Vec<usize> = visible_indices(state);
 
     // While a modal is on screen, hide the list entirely so padded rows and
     // borders can't bleed through the modal (the modal clears its own area).
     let modal_up = matches!(state.busy, Some(BusyState::Installing { .. }))
         || state.confirming_delete.is_some()
-        || state.show_help;
+        || state.show_help
+        || state.show_theme_picker;
     if modal_up {
         return;
     }
@@ -221,14 +224,12 @@ fn render_content(frame: &mut Frame, area: Rect, state: &mut AppState) {
         } else {
             "No versions match your filter."
         };
-        let mut empty = Paragraph::new(Line::from(vec![
+        let empty = Paragraph::new(Line::from(vec![
             Span::styled("  ", Style::default()),
-            Span::styled("∅ ", Theme::muted()),
-            Span::styled(msg, Theme::muted()),
-        ]));
-        if !modal_up {
-            empty = empty.block(content_block());
-        }
+            Span::styled("∅ ", theme.muted()),
+            Span::styled(msg, theme.muted()),
+        ]))
+        .block(content_block(theme));
         frame.render_widget(empty, area);
         return;
     }
@@ -241,59 +242,57 @@ fn render_content(frame: &mut Frame, area: Rect, state: &mut AppState) {
         .map(|&i| {
             let v = &state.versions[i];
             let line = match state.active_tab {
-                ActiveTab::Available => available_line(v, inner_width),
-                ActiveTab::Installed => installed_line(v, inner_width),
+                ActiveTab::Available => available_line(v, inner_width, theme),
+                ActiveTab::Installed => installed_line(v, inner_width, theme),
             };
             ListItem::new(line)
         })
         .collect();
 
     let list = List::new(items)
-        .highlight_style(Theme::selected_row())
+        .block(content_block(theme))
+        .highlight_style(theme.selected_row())
         .highlight_symbol(" ❯ ");
 
     let mut list_state: ListState = ListState::default();
     list_state.select(state.list_state.selected());
-
-    if modal_up {
-        // Render borderless rows; the modal paints over the same area.
-        frame.render_stateful_widget(list, area, &mut list_state);
-    } else {
-        frame.render_stateful_widget(list.block(content_block()), area, &mut list_state);
-    }
+    frame.render_stateful_widget(list, area, &mut list_state);
 }
 
 /// Builds one row for the *Available* tab.
-fn available_line(v: &GoVersion, width: u16) -> Line<'static> {
+fn available_line(v: &GoVersion, width: u16, theme: &Theme) -> Line<'static> {
     let mut spans = vec![
-        Span::styled(format!(" {:<10}", v.display_name), Style::default().add_modifier(Modifier::BOLD)),
-        Span::styled(format!("{:>8}", GoVersion::format_size(v.size)), Theme::muted()),
+        Span::styled(
+            format!(" {:<10}", v.display_name),
+            Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+        ),
+        Span::styled(format!("{:>8}", GoVersion::format_size(v.size)), theme.muted()),
         Span::raw("  "),
     ];
 
     match GoVersion::prerelease_tag(&v.raw_version) {
         Some(tag) if !v.stable => {
-            spans.push(Span::styled(format!("[{}]", tag), Theme::badge_unstable()));
+            spans.push(Span::styled(format!("[{}]", tag), theme.badge_unstable()));
         }
         _ => {
-            spans.push(Span::styled("[stable]", Theme::success()));
+            spans.push(Span::styled("[stable]", theme.success()));
         }
     }
 
     spans.push(Span::raw("  "));
     if v.active {
-        spans.push(Span::styled("● active", Theme::badge_active()));
+        spans.push(Span::styled("● active", theme.badge_active()));
     } else if v.installed {
-        spans.push(Span::styled("✓ installed", Theme::badge_installed()));
+        spans.push(Span::styled("✓ installed", theme.badge_installed()));
     } else {
-        spans.push(Span::styled("· available", Theme::muted()));
+        spans.push(Span::styled("· available", theme.muted()));
     }
 
     right_pad(spans, width)
 }
 
 /// Builds one row for the *Installed* tab.
-fn installed_line(v: &GoVersion, width: u16) -> Line<'static> {
+fn installed_line(v: &GoVersion, width: u16, theme: &Theme) -> Line<'static> {
     let path = v
         .path
         .as_ref()
@@ -301,40 +300,43 @@ fn installed_line(v: &GoVersion, width: u16) -> Line<'static> {
         .unwrap_or_default();
 
     let mut spans = vec![
-        Span::styled(format!(" {:<10}", v.display_name), Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            format!(" {:<10}", v.display_name),
+            Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+        ),
         Span::raw(" "),
     ];
 
     if v.active {
-        spans.push(Span::styled("● active  ", Theme::badge_active()));
+        spans.push(Span::styled("● active  ", theme.badge_active()));
     } else {
-        spans.push(Span::styled("  ready   ", Theme::badge_installed()));
+        spans.push(Span::styled("  ready   ", theme.badge_installed()));
     }
 
-    spans.push(Span::styled(shorten_path(&path, 34), Theme::muted()));
+    spans.push(Span::styled(shorten_path(&path, 34), theme.muted()));
     right_pad(spans, width)
 }
 
 /// The shared rounded border block used behind the content lists.
-fn content_block() -> Block<'static> {
+fn content_block(theme: &Theme) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Theme::BRAND_DARK))
+        .border_style(Style::default().fg(theme.brand_dark))
 }
 
 /// Renders the bottom status bar (busy progress, filter editing, or status messages).
-fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState) {
+fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
     let block = Block::default()
         .borders(Borders::TOP)
-        .border_style(Theme::muted());
+        .border_style(theme.muted());
 
     if state.filter_mode {
         let line = Line::from(vec![
-            Span::styled(" 🔎 ", Theme::brand_bold()),
-            Span::styled("Filter: ", Theme::muted()),
-            Span::styled(state.filter.clone(), Theme::brand_bold()),
-            Span::styled("▏", Theme::BRAND),
+            Span::styled(" 🔎 ", theme.brand_bold()),
+            Span::styled("Filter: ", theme.muted()),
+            Span::styled(state.filter.clone(), theme.brand_bold()),
+            Span::styled("▏", Style::default().fg(theme.brand)),
         ]);
         frame.render_widget(Paragraph::new(line).block(block), area);
         return;
@@ -343,16 +345,16 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState) {
     if let Some(busy) = &state.busy {
         let line = match busy {
             BusyState::Refreshing => Line::from(vec![
-                spinner_span(state.tick_count),
-                Span::styled(" Fetching release manifest from go.dev…", Theme::highlight()),
+                spinner_span(state.tick_count, theme),
+                Span::styled(" Fetching release manifest from go.dev…", theme.highlight()),
             ]),
             BusyState::Switching(v) => Line::from(vec![
-                spinner_span(state.tick_count),
-                Span::styled(format!(" Switching to Go {}…", v), Theme::highlight()),
+                spinner_span(state.tick_count, theme),
+                Span::styled(format!(" Switching to Go {}…", v), theme.highlight()),
             ]),
             BusyState::Deleting(v) => Line::from(vec![
-                spinner_span(state.tick_count),
-                Span::styled(format!(" Removing Go {}…", v), Theme::warning()),
+                spinner_span(state.tick_count, theme),
+                Span::styled(format!(" Removing Go {}…", v), theme.warning()),
             ]),
             BusyState::Installing {
                 version,
@@ -369,11 +371,8 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState) {
                 };
                 match phase {
                     Phase::Downloading => Line::from(vec![
-                        spinner_span(state.tick_count),
-                        Span::styled(
-                            format!(" Downloading Go {} ", version),
-                            Theme::highlight(),
-                        ),
+                        spinner_span(state.tick_count, theme),
+                        Span::styled(format!(" Downloading Go {} ", version), theme.highlight()),
                         Span::styled(
                             format!(
                                 "{:.0}%  ({}/{}) {}/s",
@@ -382,15 +381,12 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState) {
                                 GoVersion::format_size(*total),
                                 GoVersion::format_size(*speed as u64),
                             ),
-                            Theme::muted(),
+                            theme.muted(),
                         ),
                     ]),
                     Phase::Extracting => Line::from(vec![
-                        spinner_span(state.tick_count),
-                        Span::styled(
-                            format!(" Unpacking Go {}…", version),
-                            Theme::highlight(),
-                        ),
+                        spinner_span(state.tick_count, theme),
+                        Span::styled(format!(" Unpacking Go {}…", version), theme.highlight()),
                     ]),
                 }
             }
@@ -401,9 +397,9 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState) {
 
     if let Some(msg) = &state.status_message {
         let (icon, style) = match msg.kind {
-            MsgKind::Success => ("✓", Theme::success()),
-            MsgKind::Error => ("✗", Theme::error()),
-            MsgKind::Info => ("ℹ", Theme::highlight()),
+            MsgKind::Success => ("✓", theme.success()),
+            MsgKind::Error => ("✗", theme.error()),
+            MsgKind::Info => ("ℹ", theme.highlight()),
         };
         let line = Line::from(vec![
             Span::styled(format!(" {} ", icon), style.add_modifier(Modifier::BOLD)),
@@ -414,21 +410,22 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState) {
     }
 
     let hint = match state.active_tab {
-        ActiveTab::Available => "Browse official Go releases — i installs, u activates, / searches.",
-        ActiveTab::Installed => "Your local toolchains — u activates, d removes, / searches.",
+        ActiveTab::Available => "Browse official Go releases — i installs, u activates, / searches, T themes.",
+        ActiveTab::Installed => "Your local toolchains — u activates, d removes, / searches, T themes.",
     };
     frame.render_widget(
-        Paragraph::new(Line::from(vec![Span::styled(format!(" {}", hint), Theme::muted())])).block(block),
+        Paragraph::new(Line::from(vec![Span::styled(format!(" {}", hint), theme.muted())]))
+            .block(block),
         area,
     );
 }
 
 /// Renders the keyboard-shortcut footer.
-fn render_footer(frame: &mut Frame, area: Rect, state: &AppState) {
+fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
     let hint = |key: &'static str, label: &'static str| {
         vec![
-            Span::styled(format!(" {} ", key), Theme::key_hint()),
-            Span::styled(format!("{} ", label), Theme::muted()),
+            Span::styled(format!(" {} ", key), theme.key_hint()),
+            Span::styled(format!("{} ", label), theme.muted()),
         ]
     };
 
@@ -443,6 +440,7 @@ fn render_footer(frame: &mut Frame, area: Rect, state: &AppState) {
         spans.extend(hint("i", "install"));
         spans.extend(hint("u", "use"));
         spans.extend(hint("d", "delete"));
+        spans.extend(hint("T", "theme"));
         spans.extend(hint("r", "refresh"));
         spans.extend(hint("q", "quit"));
     }
@@ -455,8 +453,100 @@ fn render_footer(frame: &mut Frame, area: Rect, state: &AppState) {
 
 // ------------------------------------------ Modals -------------------------------------------- //
 
+/// Renders the color-theme picker overlay with a live preview.
+fn render_theme_picker(frame: &mut Frame, screen: Rect, state: &AppState, theme: &Theme) {
+    let area = centered_rect(54, 56, screen);
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(Span::styled(" 🎨 Color Theme ", theme.title()))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(theme.border());
+    frame.render_widget(block, area);
+
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+
+    let rows: Vec<ListItem> = ThemeName::ALL
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let selected = i == state.theme_picker_index;
+            let swatch = Theme::for_name(*name);
+            let marker = if selected { "❯" } else { " " };
+            let marker_style = if selected {
+                theme.brand_bold()
+            } else {
+                theme.muted()
+            };
+            let name_style = if selected {
+                Style::default()
+                    .fg(swatch.brand)
+                    .bg(theme.brand_dark)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.fg)
+            };
+            // A small colored block previews the theme's accent.
+            Line::from(vec![
+                Span::styled(format!(" {} ", marker), marker_style),
+                Span::styled("███ ", Style::default().fg(swatch.brand)),
+                Span::styled(format!("{:<14}", name.title()), name_style),
+                Span::styled(
+                    format!("  {}", theme_tagline(*name)),
+                    if selected {
+                        theme.muted()
+                    } else {
+                        theme.muted()
+                    },
+                ),
+            ])
+            .into()
+        })
+        .collect();
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(2)])
+        .split(inner);
+
+    let list = List::new(rows)
+        .highlight_style(theme.selected_row())
+        .highlight_symbol("");
+    let mut list_state = ListState::default();
+    list_state.select(Some(state.theme_picker_index));
+    frame.render_stateful_widget(list, chunks[0], &mut list_state);
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" ↑↓", theme.key_hint()),
+            Span::styled(" preview  ", theme.muted()),
+            Span::styled("enter", theme.key_hint()),
+            Span::styled(" save  ", theme.muted()),
+            Span::styled("esc", theme.key_hint()),
+            Span::styled(" cancel ", theme.muted()),
+        ]))
+        .alignment(Alignment::Center),
+        chunks[1],
+    );
+}
+
+/// Short descriptive tagline for each theme.
+fn theme_tagline(name: ThemeName) -> &'static str {
+    match name {
+        ThemeName::GoCyan => "brand cyan default",
+        ThemeName::Midnight => "deep indigo, low glare",
+        ThemeName::Matrix => "retro phosphor green",
+        ThemeName::Amber => "warm solarized glow",
+        ThemeName::Mono => "minimal greyscale",
+    }
+}
+
 /// Renders the centered installation progress modal with a live gauge.
-fn render_install_modal(frame: &mut Frame, screen: Rect, busy: &BusyState, tick: u64) {
+fn render_install_modal(frame: &mut Frame, screen: Rect, busy: &BusyState, tick: u64, theme: &Theme) {
     let (version, phase, downloaded, total, speed, _started_at) = match busy {
         BusyState::Installing {
             version,
@@ -481,11 +571,11 @@ fn render_install_modal(frame: &mut Frame, screen: Rect, busy: &BusyState, tick:
     let block = Block::default()
         .title(Span::styled(
             format!(" Installing Go {} ", version),
-            Theme::title(),
+            theme.title(),
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Theme::border());
+        .border_style(theme.border());
     frame.render_widget(block, area);
 
     let inner = area.inner(Margin {
@@ -506,8 +596,8 @@ fn render_install_modal(frame: &mut Frame, screen: Rect, busy: &BusyState, tick:
         Phase::Downloading => {
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
-                    spinner_span(tick),
-                    Span::styled(" Downloading archive…", Theme::highlight()),
+                    spinner_span(tick, theme),
+                    Span::styled(" Downloading archive…", theme.highlight()),
                 ])),
                 rows[0],
             );
@@ -517,18 +607,18 @@ fn render_install_modal(frame: &mut Frame, screen: Rect, busy: &BusyState, tick:
                     Block::default()
                         .borders(Borders::ALL)
                         .border_type(BorderType::Rounded)
-                        .border_style(Theme::muted()),
+                        .border_style(theme.muted()),
                 )
                 .gauge_style(
                     Style::default()
-                        .fg(Theme::BRAND)
-                        .bg(Theme::BRAND_DARK)
+                        .fg(theme.brand)
+                        .bg(theme.brand_dark)
                         .add_modifier(Modifier::BOLD),
                 )
                 .percent(pct as u16)
                 .label(Span::styled(
                     format!(" {:.1}% ", pct),
-                    Style::default().fg(Theme::FOREGROUND).add_modifier(Modifier::BOLD),
+                    Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
                 ));
             frame.render_widget(gauge, rows[1]);
 
@@ -545,13 +635,13 @@ fn render_install_modal(frame: &mut Frame, screen: Rect, busy: &BusyState, tick:
                             GoVersion::format_size(*downloaded),
                             GoVersion::format_size(*total)
                         ),
-                        Theme::muted(),
+                        theme.muted(),
                     ),
                     Span::styled(
                         format!("{}/s   ", GoVersion::format_size(*speed as u64)),
-                        Theme::highlight(),
+                        theme.highlight(),
                     ),
-                    Span::styled(format!("eta {}", eta), Theme::muted()),
+                    Span::styled(format!("eta {}", eta), theme.muted()),
                 ]))
                 .alignment(Alignment::Center),
                 rows[2],
@@ -560,8 +650,8 @@ fn render_install_modal(frame: &mut Frame, screen: Rect, busy: &BusyState, tick:
         Phase::Extracting => {
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
-                    spinner_span(tick),
-                    Span::styled(" Download complete — extracting archive…", Theme::success()),
+                    spinner_span(tick, theme),
+                    Span::styled(" Download complete — extracting archive…", theme.success()),
                 ])),
                 rows[0],
             );
@@ -573,20 +663,20 @@ fn render_install_modal(frame: &mut Frame, screen: Rect, busy: &BusyState, tick:
                     Block::default()
                         .borders(Borders::ALL)
                         .border_type(BorderType::Rounded)
-                        .border_style(Theme::muted()),
+                        .border_style(theme.muted()),
                 )
-                .gauge_style(Style::default().fg(Theme::GREEN).bg(Theme::BRAND_DARK))
+                .gauge_style(Style::default().fg(theme.success).bg(theme.brand_dark))
                 .percent((sweep * 100.0) as u16)
                 .label(Span::styled(
                     " unpacking ",
-                    Style::default().fg(Theme::FOREGROUND).add_modifier(Modifier::BOLD),
+                    Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
                 ));
             frame.render_widget(gauge, rows[1]);
 
             frame.render_widget(
                 Paragraph::new(Span::styled(
                     "  This can take a few seconds for large toolchains.",
-                    Theme::muted(),
+                    theme.muted(),
                 ))
                 .alignment(Alignment::Center),
                 rows[2],
@@ -596,7 +686,7 @@ fn render_install_modal(frame: &mut Frame, screen: Rect, busy: &BusyState, tick:
 }
 
 /// Renders the destructive-action confirmation modal.
-fn render_delete_modal(frame: &mut Frame, screen: Rect, state: &AppState) {
+fn render_delete_modal(frame: &mut Frame, screen: Rect, state: &AppState, theme: &Theme) {
     let target = match &state.confirming_delete {
         Some(t) => t,
         None => return,
@@ -606,10 +696,10 @@ fn render_delete_modal(frame: &mut Frame, screen: Rect, state: &AppState) {
     frame.render_widget(Clear, area);
 
     let block = Block::default()
-        .title(Span::styled(" ⚠ Confirm Deletion ", Theme::warning()))
+        .title(Span::styled(" ⚠ Confirm Deletion ", theme.warning()))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Theme::error());
+        .border_style(theme.error());
     frame.render_widget(block, area);
 
     let inner = area.inner(Margin {
@@ -619,27 +709,24 @@ fn render_delete_modal(frame: &mut Frame, screen: Rect, state: &AppState) {
     let text = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("  Remove ", Theme::modal_body()),
-            Span::styled(format!("Go {}", target), Theme::error().add_modifier(Modifier::BOLD)),
-            Span::styled(" from your machine?", Theme::modal_body()),
+            Span::styled("  Remove ", theme.modal_body()),
+            Span::styled(format!("Go {}", target), theme.error().add_modifier(Modifier::BOLD)),
+            Span::styled(" from your machine?", theme.modal_body()),
         ]),
         Line::from(""),
         Line::from(Span::styled(
             "  This permanently deletes the toolchain directory.",
-            Theme::muted(),
+            theme.muted(),
         )),
         Line::from(""),
         Line::from(vec![
-            Span::styled("   [y] ", Theme::error().add_modifier(Modifier::BOLD)),
-            Span::styled("Yes, delete it     ", Theme::muted()),
-            Span::styled("[n/esc] ", Theme::key_hint()),
-            Span::styled("Cancel", Theme::muted()),
+            Span::styled("   [y] ", theme.error().add_modifier(Modifier::BOLD)),
+            Span::styled("Yes, delete it     ", theme.muted()),
+            Span::styled("[n/esc] ", theme.key_hint()),
+            Span::styled("Cancel", theme.muted()),
         ]),
     ];
-    frame.render_widget(
-        Paragraph::new(text).alignment(Alignment::Left),
-        inner,
-    );
+    frame.render_widget(Paragraph::new(text).alignment(Alignment::Left), inner);
 }
 
 // -------------------------------------- Internal Helpers -------------------------------------- //
@@ -650,11 +737,8 @@ fn spinner_frame(tick: u64) -> &'static str {
 }
 
 /// A styled, animated spinner span (with a leading space).
-fn spinner_span(tick: u64) -> Span<'static> {
-    Span::styled(
-        format!(" {} ", spinner_frame(tick)),
-        Theme::brand_bold(),
-    )
+fn spinner_span(tick: u64, theme: &Theme) -> Span<'static> {
+    Span::styled(format!(" {} ", spinner_frame(tick)), theme.brand_bold())
 }
 
 /// Right-pads a line of spans so the selection highlight fills most of the row.

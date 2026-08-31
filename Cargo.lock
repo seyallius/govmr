@@ -696,6 +696,7 @@ dependencies = [
  "dirs",
  "flate2",
  "futures",
+ "futures-util",
  "indicatif",
  "ratatui",
  "reqwest",

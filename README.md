@@ -14,9 +14,11 @@ for scripting and automation.
       a dedicated "extracting" phase.
     - Live version search/filter, tab counts, archive sizes, and stable/rc badges.
     - Animated braille spinners for every background task (refresh, switch, delete, install).
-    - Rounded-corners Go-cyan theme, branded header showing the active version, and an inline PATH-setup help overlay
-      (`h`).
+    - Rounded-corners theme, branded header showing the active version, and an inline PATH-setup help overlay (`h`).
     - Keyboard navigation (vim keys + arrows).
+- **Selectable color themes**: Five built-in schemes (**Go Cyan** default, **Midnight** dark, **Matrix Green**, **Amber
+  Glow**, **Monochrome**). Pick one in the TUI with `T` (live preview + number-key shortcuts) and it is saved
+  permanently to `~/.govmr/config` — or set it from the CLI with `govmr theme <name>`. Change it again any time.
 - **CLI progress bar**: `govmr install` shows a colored byte/speed/ETA bar that morphs into a spinner during extraction.
 - **Non-Destructive Version Switching**: Uses executable shims (`~/.govmr/shim`) to instantly switch active versions
   without modifying global binary paths.
@@ -117,6 +119,7 @@ govmr
 | `u`            | Switch the active Go version to the selected release                      |
 | `d`            | Delete the selected installed version (asks for confirmation)             |
 | `r`            | Refresh the remote version manifest from `go.dev`                         |
+| `T`            | Open the color-theme picker (arrows to preview, `Enter` to save)          |
 | `h` / `?`      | Open the PATH-setup help overlay                                          |
 | `q` / `Ctrl+C` | Exit GoVMR                                                                |
 
@@ -135,6 +138,10 @@ govmr list
 
 # Delete an installed Go release
 govmr delete 1.21.6
+
+# List available color themes / switch permanently
+govmr theme
+govmr theme midnight
 
 # Show help options
 govmr --help

@@ -68,7 +68,8 @@ async fn run_tui(
         .to_string_lossy()
         .to_string();
     let shim_in_path = manager.get_shim_manager().is_in_path();
-    tui::setup::run_setup_guide_if_needed(terminal, &shim_path, shim_in_path).await?;
+    let initial_theme = manager.theme();
+    tui::setup::run_setup_guide_if_needed(terminal, &shim_path, shim_in_path, &initial_theme).await?;
 
     let mut app = App::new(manager.clone(), shim_path).await;
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
@@ -94,6 +95,28 @@ async fn run_tui(
                 // Help overlay captures every key until dismissed.
                 if app.state.show_help {
                     app.state.show_help = false;
+                    continue;
+                }
+
+                // Theme picker: navigate with arrows/vim keys, Enter saves,
+                // Esc/q cancels and restores the persisted theme.
+                if app.state.show_theme_picker {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Char('q') => app.picker_cancel(),
+                        KeyCode::Enter => app.picker_apply(),
+                        KeyCode::Down | KeyCode::Char('j') => app.picker_move(1),
+                        KeyCode::Up | KeyCode::Char('k') => app.picker_move(-1),
+                        KeyCode::Char(c) if c.is_ascii_digit() && c != '0' => {
+                            let i = (c as u8 - b'1') as usize;
+                            if i < govmr::theme::ThemeName::ALL.len() {
+                                app.state.theme_picker_index = i;
+                                app.state.theme =
+                                    govmr::theme::Theme::for_name(app.picker_theme());
+                                app.picker_apply();
+                            }
+                        }
+                        _ => {}
+                    }
                     continue;
                 }
 
@@ -145,11 +168,14 @@ async fn run_tui(
 
                 match key.code {
                     KeyCode::Char('q') => break,
-                    KeyCode::Tab | KeyCode::Char('t') => app.switch_tab(),
+                    KeyCode::Tab => app.switch_tab(),
                     KeyCode::Down | KeyCode::Char('j') => app.next_item(),
                     KeyCode::Up | KeyCode::Char('k') => app.previous_item(),
                     KeyCode::Char('/') => {
                         app.state.filter_mode = true;
+                    }
+                    KeyCode::Char('T') => {
+                        app.open_theme_picker();
                     }
                     KeyCode::Char('h') | KeyCode::Char('?') => {
                         app.state.show_help = true;

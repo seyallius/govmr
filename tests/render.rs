@@ -3,6 +3,7 @@
 
 use govmr::app::{ActiveTab, AppState, BusyState, Phase};
 use govmr::models::GoVersion;
+use govmr::theme::{Theme, ThemeName};
 use govmr::tui::views::{render, render_overlays};
 use ratatui::Terminal;
 use ratatui::{backend::TestBackend, buffer::Buffer};
@@ -147,6 +148,40 @@ fn renders_path_warning_when_shim_missing() {
 
     let text = buffer_as_text(terminal.backend().buffer());
     assert!(text.contains("PATH"), "path warning banner shown");
+}
+
+#[test]
+fn renders_theme_picker_with_all_schemes() {
+    let mut terminal = make_terminal();
+    let mut state = AppState::from_versions(versions_fixture(), true);
+    state.show_theme_picker = true;
+    state.theme = Theme::for_name(ThemeName::Midnight);
+    terminal
+        .draw(|f| {
+            render(f, &mut state);
+            render_overlays(f, &state);
+        })
+        .unwrap();
+
+    let text = buffer_as_text(terminal.backend().buffer());
+    assert!(text.contains("Color Theme"), "picker title");
+    for name in ThemeName::ALL {
+        assert!(text.contains(name.title()), "theme {} listed", name.title());
+    }
+}
+
+#[test]
+fn alternate_theme_still_renders_without_panicking() {
+    for name in ThemeName::ALL {
+        let mut terminal = make_terminal();
+        let mut state = AppState::from_versions(versions_fixture(), true);
+        state.theme = Theme::for_name(name);
+        terminal
+            .draw(|f| {
+                render(f, &mut state);
+            })
+            .unwrap();
+    }
 }
 
 #[test]

@@ -6,6 +6,7 @@
 use crate::{
     manager::{GoManager, InstallProgress},
     models::GoVersion,
+    theme::{Theme, ThemeName},
 };
 use ratatui::widgets::ListState;
 use std::sync::Arc;
@@ -121,6 +122,12 @@ pub struct AppState {
     pub filter_mode: bool,
     /// Whether the PATH-setup help overlay is displayed.
     pub show_help: bool,
+    /// Whether the color-theme picker overlay is displayed.
+    pub show_theme_picker: bool,
+    /// Index of the currently highlighted entry in the theme picker.
+    pub theme_picker_index: usize,
+    /// The active color palette (reloaded instantly when switching themes).
+    pub theme: Theme,
     /// Monotonic render counter used to drive spinner animations.
     pub tick_count: u64,
 }
@@ -170,6 +177,7 @@ impl AppState {
         if !versions.is_empty() {
             list_state.select(Some(0));
         }
+        let theme = Theme::for_name(ThemeName::default());
         Self {
             versions,
             list_state,
@@ -182,6 +190,9 @@ impl AppState {
             filter: String::new(),
             filter_mode: false,
             show_help: false,
+            show_theme_picker: false,
+            theme_picker_index: 0,
+            theme,
             tick_count: 0,
         }
     }
@@ -243,6 +254,11 @@ impl App {
     /// Instantiates a new application controller, performing initial version manifest loading.
     pub async fn new(manager: Arc<GoManager>, shim_path: String) -> Self {
         let is_in_path = manager.get_shim_manager().is_in_path();
+        let current_theme = manager.theme_name();
+        let theme_picker_index = ThemeName::ALL
+            .iter()
+            .position(|t| *t == current_theme)
+            .unwrap_or(0);
         let mut app = Self {
             state: AppState {
                 versions: Vec::new(),
@@ -256,6 +272,9 @@ impl App {
                 filter: String::new(),
                 filter_mode: false,
                 show_help: false,
+                show_theme_picker: false,
+                theme_picker_index,
+                theme: Theme::for_name(current_theme),
                 tick_count: 0,
             },
             manager,
@@ -308,6 +327,60 @@ impl App {
     pub fn switch_tab(&mut self) {
         self.state.active_tab = self.state.active_tab.toggle();
         self.state.list_state.select(Some(0));
+    }
+
+    /// Opens the theme picker, landing on the currently active theme.
+    pub fn open_theme_picker(&mut self) {
+        self.state.show_theme_picker = true;
+        let current = self.manager.theme_name();
+        self.state.theme_picker_index = ThemeName::ALL
+            .iter()
+            .position(|t| *t == current)
+            .unwrap_or(0);
+        self.state.theme = self.manager.theme();
+    }
+
+    /// Returns the theme currently highlighted in the picker.
+    pub fn picker_theme(&self) -> ThemeName {
+        ThemeName::ALL[self.state.theme_picker_index]
+    }
+
+    /// Moves the picker cursor up/down and live-previews the theme.
+    pub fn picker_move(&mut self, delta: i32) {
+        let len = ThemeName::ALL.len() as i32;
+        let mut i = self.state.theme_picker_index as i32 + delta;
+        if i < 0 {
+            i = len - 1;
+        }
+        if i >= len {
+            i = 0;
+        }
+        self.state.theme_picker_index = i as usize;
+        self.state.theme = Theme::for_name(self.picker_theme());
+    }
+
+    /// Selects the highlighted picker entry, persisting it via the manager.
+    pub fn picker_apply(&mut self) {
+        let chosen = self.picker_theme();
+        match self.manager.set_theme(chosen) {
+            Ok(theme) => {
+                self.state.theme = theme;
+                self.set_status(
+                    format!("Theme set to {} and saved", chosen.title()),
+                    MsgKind::Success,
+                );
+            }
+            Err(e) => {
+                self.set_status(format!("Could not save theme: {}", e), MsgKind::Error);
+            }
+        }
+        self.state.show_theme_picker = false;
+    }
+
+    /// Closes the picker and restores the persisted theme (cancelling preview).
+    pub fn picker_cancel(&mut self) {
+        self.state.show_theme_picker = false;
+        self.state.theme = self.manager.theme();
     }
 
     /// Keeps the selection index within the bounds of the currently visible list.

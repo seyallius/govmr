@@ -3,7 +3,7 @@ name = "govmr"
 version = "0.1.2"
 edition = "2024"
 authors = ["Seyed Ali <seyed.ali.devl@gmail.com>"]
-description = "A fast, asynchronous Go version manager written in Rust with an interactive TUI."
+description = "A high-performance, asynchronous Go Version Manager with a slick terminal UI."
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["go", "golang", "version-manager", "tui", "ratatui"]
@@ -36,6 +36,7 @@ flate2 = "1.0"
 tar = "0.4"
 zip = "2.1"
 dirs = "5.0"
+futures-util = "0.3.34"
 
 [profile.release]
 opt-level = 3

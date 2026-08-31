@@ -3,7 +3,7 @@
 //
 //! Module setup - Interactive onboarding screen and in-app PATH help overlay.
 
-use crate::tui::styles::Theme;
+use crate::theme::Theme;
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{
     Frame, Terminal,
@@ -23,13 +23,14 @@ pub async fn run_setup_guide_if_needed<B: Backend>(
     terminal: &mut Terminal<B>,
     shim_path: &str,
     shim_in_path: bool,
+    theme: &Theme,
 ) -> io::Result<()> {
     if shim_in_path {
         return Ok(());
     }
 
     loop {
-        terminal.draw(|f| draw_setup_modal(f, f.area(), shim_path))?;
+        terminal.draw(|f| draw_setup_modal(f, f.area(), shim_path, theme))?;
 
         if let Event::Key(key) = event::read()? {
             if key.code == KeyCode::Enter
@@ -46,7 +47,7 @@ pub async fn run_setup_guide_if_needed<B: Backend>(
 /// Draws the PATH-setup help overlay centered on the current frame.
 ///
 /// Used both for first-time onboarding and the in-app `[h]` help overlay.
-pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str) {
+pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str, theme: &Theme) {
     // Wider on roomy terminals, but clamped so it never overflows small screens.
     let pct_x = if screen.width >= 90 { 78 } else { 92 };
     let pct_y = if screen.height >= 26 { 56 } else { 84 };
@@ -55,12 +56,12 @@ pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str) {
 
     let block = Block::default()
         .title(Line::from(vec![
-            Span::styled(" 🔧 ", Style::default().fg(Theme::BRAND)),
-            Span::styled(" GoVMR Setup ", Theme::title()),
+            Span::styled(" 🔧 ", Style::default().fg(theme.brand)),
+            Span::styled(" GoVMR Setup ", theme.title()),
         ]))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Theme::border());
+        .border_style(theme.border());
     frame.render_widget(block, area);
 
     let inner = area.inner(Margin {
@@ -82,12 +83,9 @@ pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str) {
         Paragraph::new(vec![
             Line::from(Span::styled(
                 "Add the GoVMR shim directory to your PATH so `go`",
-                Theme::modal_body(),
+                theme.modal_body(),
             )),
-            Line::from(Span::styled(
-                "resolves through GoVMR:",
-                Theme::modal_body(),
-            )),
+            Line::from(Span::styled("resolves through GoVMR:", theme.modal_body())),
         ]),
         chunks[0],
     );
@@ -100,11 +98,11 @@ pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str) {
     let cmd_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Theme::border());
+        .border_style(theme.border());
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
             format!(" $ {} ", cmd),
-            Theme::brand_bold(),
+            theme.brand_bold(),
         )))
         .block(cmd_block)
         .alignment(Alignment::Center),
@@ -114,7 +112,7 @@ pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str) {
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
             "Add the line above to your ~/.bashrc, ~/.zshrc, or shell profile, then reload your shell.",
-            Theme::muted(),
+            theme.muted(),
         )))
         .wrap(ratatui::widgets::Wrap { trim: true }),
         chunks[3],
@@ -122,9 +120,9 @@ pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str) {
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(" Press ", Theme::muted()),
-            Span::styled("any key", Theme::key_hint()),
-            Span::styled(" to close ", Theme::muted()),
+            Span::styled(" Press ", theme.muted()),
+            Span::styled("any key", theme.key_hint()),
+            Span::styled(" to close ", theme.muted()),
         ]))
         .alignment(Alignment::Center),
         chunks[4],
