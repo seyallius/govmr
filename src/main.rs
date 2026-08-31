@@ -1,3 +1,11 @@
+//! Copyright (c) 2026 SeyedAli
+//! Licensed under the MIT License. See LICENSE file in the project root for details.
+//!
+//! GoVMR - Go Version Manager in Rust.
+//!
+//! Provides CLI and interactive TUI tooling to fetch, install, switch,
+//! and manage multiple Go toolchain versions seamlessly.
+
 mod app;
 mod cli;
 mod errors;
@@ -16,9 +24,11 @@ use crossterm::{
 };
 use manager::GoManager;
 use ratatui::{Terminal, backend::CrosstermBackend};
-use std::{io, sync::Arc};
+use std::io;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
+/// Main runtime entry point initializing terminal rendering or executing CLI commands.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli_args = Cli::parse();
