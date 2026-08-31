@@ -7,6 +7,7 @@ pub mod app;
 pub mod cli;
 pub mod config;
 pub mod errors;
+pub mod logging;
 pub mod manager;
 pub mod models;
 pub mod shim;

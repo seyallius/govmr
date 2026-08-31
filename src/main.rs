@@ -2,7 +2,7 @@
 //! Licensed under the MIT License. See LICENSE file in the project root for details.
 //
 //! GoVMR - Go Version Manager in Rust.
-//
+//!
 //! Provides CLI and interactive TUI tooling to fetch, install, switch,
 //! and manage multiple Go toolchain versions seamlessly.
 
@@ -10,27 +10,43 @@ use clap::Parser;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use govmr::app::{Action, App, BusyState, MsgKind, Phase};
-use govmr::cli::{Cli, handle_cli};
-use govmr::manager::GoManager;
-use govmr::tui;
-use ratatui::{Terminal, backend::CrosstermBackend};
-use std::io;
-use std::sync::Arc;
-use std::time::Duration;
+use govmr::{
+    app::{Action, App, BusyState, MsgKind, Phase},
+    cli::{handle_cli, Cli},
+    logging,
+    manager::GoManager,
+    tui,
+};
+use ratatui::{backend::CrosstermBackend, Terminal};
+use std::{io, sync::Arc, time::Duration};
 use tokio::sync::mpsc;
+
+// ------------------------------------------- <Main> ------------------------------------------- //
 
 /// Main runtime entry point initializing terminal rendering or executing CLI commands.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli_args = Cli::parse();
     let manager = Arc::new(GoManager::new()?);
+    logging::init();
 
     if cli_args.command.is_some() {
-        return handle_cli(cli_args, manager).await;
+        logging::info(&format!(
+            "govmr {} started (cli mode)",
+            env!("CARGO_PKG_VERSION")
+        ));
+        let result = handle_cli(cli_args, manager).await;
+        if let Err(e) = &result {
+            logging::error(&format!("cli command failed: {e}"));
+        }
+        return result;
     }
+    logging::info(&format!(
+        "govmr {} started (tui mode)",
+        env!("CARGO_PKG_VERSION")
+    ));
 
     // Terminal initialization
     enable_raw_mode()?;
@@ -56,6 +72,8 @@ async fn main() -> anyhow::Result<()> {
 
     result
 }
+
+// -------------------------------------- Internal Helpers -------------------------------------- //
 
 /// Runs the interactive dashboard event loop until the user quits.
 async fn run_tui(
@@ -286,6 +304,7 @@ async fn handle_actions(
                 app.refresh_versions().await;
             }
             Action::InstallFailed(err) => {
+                logging::error(&format!("install failed: {err}"));
                 app.state.busy = None;
                 app.set_status(format!("Installation failed: {}", err), MsgKind::Error);
             }
@@ -296,7 +315,10 @@ async fn handle_actions(
                         format!("Switched to Go {}", v.raw_version),
                         MsgKind::Success,
                     ),
-                    Err(e) => app.set_status(e.to_string(), MsgKind::Error),
+                    Err(e) => {
+                        logging::error(&format!("use failed: {e}"));
+                        app.set_status(e.to_string(), MsgKind::Error)
+                    }
                 }
                 app.refresh_versions().await; // exits with busy == None
             }
@@ -306,7 +328,10 @@ async fn handle_actions(
                     Ok(_) => {
                         app.set_status(format!("Deleted Go {}", v.raw_version), MsgKind::Success)
                     }
-                    Err(e) => app.set_status(e.to_string(), MsgKind::Error),
+                    Err(e) => {
+                        logging::error(&format!("delete failed: {e}"));
+                        app.set_status(e.to_string(), MsgKind::Error)
+                    }
                 }
                 app.refresh_versions().await;
             }

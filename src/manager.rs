@@ -6,6 +6,7 @@
 use crate::{
     config::Config,
     errors::GovmError,
+    logging,
     models::{GoRelease, GoVersion},
     shim::ShimManager,
     theme::{Theme, ThemeName},
@@ -14,6 +15,7 @@ use futures_util::StreamExt;
 use std::{
     env::consts::{ARCH, OS},
     fs::{self, File},
+    io::Read as _,
     path::PathBuf,
     sync::Mutex,
     time::{Duration, Instant},
@@ -102,6 +104,7 @@ impl GoManager {
     /// Persists a new color-theme choice and returns the resulting palette.
     pub fn set_theme(&self, theme: ThemeName) -> Result<Theme, GovmError> {
         self.config.lock().expect("config lock").set_theme(theme)?;
+        logging::info(&format!("theme set: {}", theme.key()));
         Ok(Theme::for_name(theme))
     }
 
@@ -119,7 +122,22 @@ impl GoManager {
     /// Returns [`GovmError::Network`] if the request fails or [`GovmError::Io`] on filesystem read failure.
     pub async fn fetch_versions(&self) -> Result<Vec<GoVersion>, GovmError> {
         let url = "https://go.dev/dl/?mode=json&include=all";
-        let releases: Vec<GoRelease> = self.client.get(url).send().await?.json().await?;
+        logging::debug(&format!("refresh: GET {url}"));
+        let releases: Vec<GoRelease> = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| {
+                logging::error(&format!("refresh failed (request): {e}"));
+                GovmError::from(e)
+            })?
+            .json()
+            .await
+            .map_err(|e| {
+                logging::error(&format!("refresh failed (decode): {e}"));
+                GovmError::from(e)
+            })?;
 
         let go_os = match OS {
             "macos" => "darwin",
@@ -160,6 +178,7 @@ impl GoManager {
         }
 
         versions.sort_by(|a, b| Self::compare_versions(&b.raw_version, &a.raw_version));
+        logging::info(&format!("refresh ok: {} versions listed", versions.len()));
         Ok(versions)
     }
 
@@ -181,6 +200,12 @@ impl GoManager {
     {
         let download_path = self.downloads_dir.join(&version.filename);
         let target_dir = self.versions_dir.join(format!("go{}", version.raw_version));
+        logging::info(&format!(
+            "install started: go{} url={} dest={}",
+            version.raw_version,
+            version.url,
+            download_path.display()
+        ));
 
         let res = self.client.get(&version.url).send().await?;
         let total_size = res.content_length().unwrap_or(version.size);
@@ -230,6 +255,23 @@ impl GoManager {
             }
         }
         file.flush().await?;
+        logging::info(&format!(
+            "download complete: go{} {} bytes -> {}",
+            version.raw_version,
+            downloaded,
+            download_path.display()
+        ));
+
+        // Forensic breadcrumb: what did we ACTUALLY save? `1f 8b` = real gzip;
+        // `3c 68 74 6d` ("<htm") = HTML error page; plain tar bytes = something
+        // pre-decoded our stream.
+        if let Ok(mut probe) = File::open(&download_path) {
+            let mut head = [0u8; 16];
+            if let Ok(n) = probe.read(&mut head) {
+                let hex: Vec<String> = head[..n].iter().map(|b| format!("{b:02x}")).collect();
+                logging::debug(&format!("archive head: {}", hex.join(" ")));
+            }
+        }
 
         // Final 100% report, then flip to the extraction phase.
         progress(InstallProgress::Downloading {
@@ -248,7 +290,7 @@ impl GoManager {
         let target_dir_clone = target_dir.clone();
         let is_tar = version.filename.ends_with(".tar.gz");
 
-        tokio::task::spawn_blocking(move || -> Result<(), GovmError> {
+        let extraction = tokio::task::spawn_blocking(move || -> Result<(), GovmError> {
             if is_tar {
                 let tar_gz = File::open(&dl_path_clone)?;
                 let tar = flate2::read::GzDecoder::new(tar_gz);
@@ -300,8 +342,18 @@ impl GoManager {
             Ok(())
         })
         .await
-        .map_err(|e| GovmError::Extraction(e.to_string()))??;
+        .map_err(|e| GovmError::Extraction(e.to_string()))?;
 
+        if let Err(e) = &extraction {
+            logging::error(&format!("install failed: go{}: {e}", version.raw_version));
+        }
+        extraction?;
+
+        logging::info(&format!(
+            "install complete: go{} -> {}",
+            version.raw_version,
+            target_dir.display()
+        ));
         Ok(target_dir)
     }
 
@@ -321,7 +373,12 @@ impl GoManager {
         let active_file = self.base_dir.join("active_version");
         fs::write(active_file, &version.raw_version)?;
 
-        Ok(self.shim_mgr.is_in_path())
+        let is_in_path = self.shim_mgr.is_in_path();
+        logging::info(&format!(
+            "use: active version is now go{} (shim in PATH: {is_in_path})",
+            version.raw_version
+        ));
+        Ok(is_in_path)
     }
 
     /// Deletes an installed Go version from disk.
@@ -341,6 +398,7 @@ impl GoManager {
                 fs::remove_dir_all(path)?;
             }
         }
+        logging::info(&format!("delete: removed go{}", version.raw_version));
         Ok(())
     }
 

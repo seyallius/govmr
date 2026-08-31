@@ -29,6 +29,9 @@ for scripting and automation.
 - **Non-Destructive Version Switching**: Uses executable shims (`~/.govmr/shim`) to instantly switch active versions
   without modifying global binary paths.
 - **Cross-Platform**: Full support for Linux, macOS, and Windows.
+- **Operation log**: every fetch/install/switch/delete/theme change is appended to
+  `~/.govmr/govmr.log` (UTC timestamps, 1 MiB rotation) — your post-mortem trail when
+  the TUI owns the screen and stdout is unusable.
 
 ---
 
