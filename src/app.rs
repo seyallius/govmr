@@ -231,6 +231,10 @@ impl App {
     // ----------------------------------------- Public API ----------------------------------------- //
 
     /// Instantiates a new application controller, performing initial version manifest loading.
+    ///
+    /// The initial load goes through [`App::refresh_versions`], which now owns the
+    /// `BusyState::Refreshing` lifecycle, so `state.busy` is guaranteed `None` once
+    /// construction finishes and the `i`/`u`/`d`/`r` keys work immediately.
     pub async fn new(manager: Arc<GoManager>, shim_path: String) -> Self {
         let is_in_path = manager.get_shim_manager().is_in_path();
         let current_theme = manager.theme_name();
@@ -238,6 +242,7 @@ impl App {
             .iter()
             .position(|t| *t == current_theme)
             .unwrap_or(0);
+
         let mut app = Self {
             state: AppState {
                 versions: Vec::new(),
@@ -258,13 +263,18 @@ impl App {
             },
             manager,
         };
-        app.state.busy = Some(BusyState::Refreshing);
+
         app.refresh_versions().await;
+        debug_assert!(!app.is_busy(), "App::new left the app in a busy state");
         app
     }
 
     /// Asynchronously refreshes the version list from the GoManager.
+    ///
+    /// Owns the `BusyState::Refreshing` lifecycle: raises the flag on entry and
+    /// clears it on *every* exit, so callers cannot forget (the stuck-spinner bug).
     pub async fn refresh_versions(&mut self) {
+        self.state.busy = Some(BusyState::Refreshing);
         match self.manager.fetch_versions().await {
             Ok(versions) => {
                 self.state.versions = versions;
@@ -275,6 +285,7 @@ impl App {
                 self.set_status(e.to_string(), MsgKind::Error);
             }
         }
+        self.state.busy = None;
     }
 
     /// Records a transient status message.

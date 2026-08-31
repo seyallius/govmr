@@ -69,7 +69,8 @@ async fn run_tui(
         .to_string();
     let shim_in_path = manager.get_shim_manager().is_in_path();
     let initial_theme = manager.theme();
-    tui::setup::run_setup_guide_if_needed(terminal, &shim_path, shim_in_path, &initial_theme).await?;
+    tui::setup::run_setup_guide_if_needed(terminal, &shim_path, shim_in_path, &initial_theme)
+        .await?;
 
     let mut app = App::new(manager.clone(), shim_path).await;
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
@@ -110,8 +111,7 @@ async fn run_tui(
                             let i = (c as u8 - b'1') as usize;
                             if i < govmr::theme::ThemeName::ALL.len() {
                                 app.state.theme_picker_index = i;
-                                app.state.theme =
-                                    govmr::theme::Theme::for_name(app.picker_theme());
+                                app.state.theme = govmr::theme::Theme::for_name(app.picker_theme());
                                 app.picker_apply();
                             }
                         }
@@ -229,6 +229,9 @@ async fn run_tui(
 }
 
 /// Drains and processes all queued background actions for one event-loop tick.
+///
+/// Each arm only manages the busy state of its *own* operation (Switching,
+/// Deleting, Installing); the Refreshing flag lives inside `refresh_versions`.
 async fn handle_actions(
     action_rx: &mut mpsc::UnboundedReceiver<Action>,
     app: &mut App,
@@ -238,9 +241,7 @@ async fn handle_actions(
     while let Ok(action) = action_rx.try_recv() {
         match action {
             Action::Refresh => {
-                app.state.busy = Some(BusyState::Refreshing);
                 app.refresh_versions().await;
-                app.state.busy = None;
             }
             Action::Install(v) => {
                 app.state.busy = Some(BusyState::Installing {
@@ -282,9 +283,7 @@ async fn handle_actions(
                     format!("Go {} installed successfully", v.raw_version),
                     MsgKind::Success,
                 );
-                app.state.busy = Some(BusyState::Refreshing);
                 app.refresh_versions().await;
-                app.state.busy = None;
             }
             Action::InstallFailed(err) => {
                 app.state.busy = None;
@@ -293,34 +292,23 @@ async fn handle_actions(
             Action::Use(v) => {
                 app.state.busy = Some(BusyState::Switching(v.raw_version.clone()));
                 match manager.switch_version(&v) {
-                    Ok(_) => {
-                        app.set_status(
-                            format!("Switched to Go {}", v.raw_version),
-                            MsgKind::Success,
-                        );
-                    }
-                    Err(e) => {
-                        app.set_status(e.to_string(), MsgKind::Error);
-                    }
+                    Ok(_) => app.set_status(
+                        format!("Switched to Go {}", v.raw_version),
+                        MsgKind::Success,
+                    ),
+                    Err(e) => app.set_status(e.to_string(), MsgKind::Error),
                 }
-                app.refresh_versions().await;
-                app.state.busy = None;
+                app.refresh_versions().await; // exits with busy == None
             }
             Action::Delete(v) => {
                 app.state.busy = Some(BusyState::Deleting(v.raw_version.clone()));
                 match manager.delete_version(&v) {
                     Ok(_) => {
-                        app.set_status(
-                            format!("Deleted Go {}", v.raw_version),
-                            MsgKind::Success,
-                        );
+                        app.set_status(format!("Deleted Go {}", v.raw_version), MsgKind::Success)
                     }
-                    Err(e) => {
-                        app.set_status(e.to_string(), MsgKind::Error);
-                    }
+                    Err(e) => app.set_status(e.to_string(), MsgKind::Error),
                 }
                 app.refresh_versions().await;
-                app.state.busy = None;
             }
         }
     }
