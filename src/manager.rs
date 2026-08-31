@@ -1,3 +1,8 @@
+//! Copyright (c) 2026 SeyedAli
+//! Licensed under the MIT License. See LICENSE file in the project root for details.
+//!
+//! Module manager - Core lifecycle coordinator for fetching, installing, switching, and deleting Go versions.
+
 use crate::{
     errors::GovmError,
     models::{GoRelease, GoVersion},
@@ -11,17 +16,31 @@ use std::{
 };
 use tokio::io::AsyncWriteExt;
 
+// ------------------------------------------ Types & Impls ------------------------------------- //
+
+/// Primary orchestrator managing installed toolchains, downloads, and version switching.
 pub struct GoManager {
+    /// Base configuration directory (`~/.govmr`).
     base_dir: PathBuf,
+    /// Root directory storing extracted Go toolchains (`~/.govmr/versions`).
     versions_dir: PathBuf,
+    /// Directory storing temporary download archives (`~/.govmr/downloads`).
     downloads_dir: PathBuf,
+    /// Handler for creating and managing executable binary shims.
     shim_mgr: ShimManager,
+    /// Reusable asynchronous HTTP client for network operations.
     client: reqwest::Client,
 }
 impl GoManager {
+    // ----------------------------------------- Public API ----------------------------------------- //
+
+    /// Initializes a new instance of `GoManager`, creating required directories if missing.
+    ///
+    /// # Errors
+    /// Returns [`GovmError`] if directory creation or initialization fails.
     pub fn new() -> Result<Self, GovmError> {
         let home = dirs::home_dir().ok_or(GovmError::HomeNotFound)?;
-        let base_dir = home.join(".govm");
+        let base_dir = home.join(".govmr");
         let versions_dir = base_dir.join("versions");
         let downloads_dir = base_dir.join("downloads");
 
@@ -37,10 +56,12 @@ impl GoManager {
         })
     }
 
+    /// Provides access to the underlying [`ShimManager`].
     pub fn get_shim_manager(&self) -> &ShimManager {
         &self.shim_mgr
     }
 
+    /// Retrieves the currently active Go version string from disk, if set.
     pub fn get_active_version(&self) -> Option<String> {
         let active_file = self.base_dir.join("active_version");
         fs::read_to_string(active_file)
@@ -48,6 +69,10 @@ impl GoManager {
             .map(|v| v.trim().to_string())
     }
 
+    /// Queries `go.dev` for available Go releases and cross-references them against locally installed versions.
+    ///
+    /// # Errors
+    /// Returns [`GovmError::Network`] if the request fails or [`GovmError::Io`] on filesystem read failure.
     pub async fn fetch_versions(&self) -> Result<Vec<GoVersion>, GovmError> {
         let url = "https://go.dev/dl/?mode=json&include=all";
         let releases: Vec<GoRelease> = self.client.get(url).send().await?.json().await?;
@@ -93,6 +118,14 @@ impl GoManager {
         Ok(versions)
     }
 
+    /// Asynchronously streams and extracts a target Go toolchain archive.
+    ///
+    /// # Arguments
+    /// * `version` - The version metadata to install.
+    /// * `progress` - Callback invoked with fractional progress (0.0 to 1.0).
+    ///
+    /// # Errors
+    /// Returns [`GovmError`] on download failure, IO interruption, or extraction error.
     pub async fn download_and_install<F>(
         &self,
         version: &GoVersion,
@@ -135,7 +168,6 @@ impl GoManager {
                 let tar = flate2::read::GzDecoder::new(tar_gz);
                 let mut archive = tar::Archive::new(tar);
 
-                // Extract stripping the root "go/" wrapper folder
                 for entry in archive.entries()? {
                     let mut entry = entry?;
                     let path = entry.path()?;
@@ -187,6 +219,10 @@ impl GoManager {
         Ok(target_dir)
     }
 
+    /// Sets the specified version as active by generating shims and recording selection on disk.
+    ///
+    /// # Returns
+    /// Returns `true` if the shim directory is correctly configured in system `PATH`.
     pub fn switch_version(&self, version: &GoVersion) -> Result<bool, GovmError> {
         let version_path = version
             .path
@@ -202,6 +238,11 @@ impl GoManager {
         Ok(self.shim_mgr.is_in_path())
     }
 
+    /// Deletes an installed Go version from disk.
+    ///
+    /// # Errors
+    /// Returns [`GovmError::CannotDeleteActive`] if trying to delete the active version,
+    /// or [`GovmError::NotInstalled`] if the version is not found locally.
     pub fn delete_version(&self, version: &GoVersion) -> Result<(), GovmError> {
         if !version.installed {
             return Err(GovmError::NotInstalled(version.raw_version.clone()));
@@ -217,6 +258,7 @@ impl GoManager {
         Ok(())
     }
 
+    /// Compares two semver-like version strings numerically.
     pub fn compare_versions(v1: &str, v2: &str) -> std::cmp::Ordering {
         let parse = |v: &str| -> Vec<u32> {
             v.split('.')

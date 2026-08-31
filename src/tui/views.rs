@@ -1,7 +1,10 @@
-use crate::{
-    app::{ActiveTab, AppState},
-    tui::styles::Theme,
-};
+//! Copyright (c) 2026 SeyedAli
+//! Licensed under the MIT License. See LICENSE file in the project root for details.
+//!
+//! Module views - Main layout composition, widget rendering, and modal views for Ratatui.
+
+use super::styles::Theme;
+use crate::app::{ActiveTab, AppState};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -10,13 +13,20 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Row, Table, Tabs},
 };
 
+// ----------------------------------------- Public API ----------------------------------------- //
+
+/// Primary render routine for the GoVMR dashboard interface.
+///
+/// # Arguments
+/// * `frame` - Mutable drawing frame provided by Ratatui.
+/// * `state` - Current mutable application state.
 pub fn render(frame: &mut Frame, state: &mut AppState) {
     let size = frame.area();
 
     let main_block = Block::default()
         .borders(Borders::ALL)
         .border_style(Theme::border())
-        .title(Span::styled(" GoVM - Go Version Manager ", Theme::title()));
+        .title(Span::styled(" GoVMR - Go Version Manager ", Theme::title()));
     frame.render_widget(main_block, size);
 
     let inner = size.inner(ratatui::layout::Margin {
@@ -35,15 +45,13 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         ])
         .split(inner);
 
-    // Warning Banner if Shim is not in PATH
     if !state.is_shim_in_path {
         let warning =
-            Paragraph::new("⚠️ GoVM shim is not in your PATH. Please configure your shell.")
+            Paragraph::new("⚠️ GoVMR shim is not in your PATH. Please configure your shell.")
                 .style(Theme::warning());
         frame.render_widget(warning, chunks[0]);
     }
 
-    // Tabs
     let tab_titles = vec!["Available Versions", "Installed Versions"];
     let tabs = Tabs::new(tab_titles)
         .select(match state.active_tab {
@@ -58,7 +66,6 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         .highlight_style(Theme::highlight().add_modifier(Modifier::BOLD));
     frame.render_widget(tabs, chunks[1]);
 
-    // Tab Body
     match state.active_tab {
         ActiveTab::Available => {
             let items: Vec<ListItem> = state
@@ -119,7 +126,6 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         }
     }
 
-    // Status Message / Loading Indicator
     if state.loading {
         let loading_msg = if let Some(ver) = &state.action_target {
             format!("Processing Go {}...", ver)
@@ -139,7 +145,6 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         frame.render_widget(Paragraph::new(msg.as_str()).style(style), chunks[3]);
     }
 
-    // Help Footer
     let help = match state.active_tab {
         ActiveTab::Available => {
             "[i] Install  [u] Use  [d] Delete  [r] Refresh  [Tab] Switch Tab  [q] Quit"
@@ -148,7 +153,6 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     };
     frame.render_widget(Paragraph::new(help).style(Theme::muted()), chunks[4]);
 
-    // Confirmation Modal
     if let Some(target) = &state.confirming_delete {
         let modal_area = centered_rect(60, 20, size);
         frame.render_widget(Clear, modal_area);
@@ -166,6 +170,9 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     }
 }
 
+// -------------------------------------- Internal Helpers -------------------------------------- //
+
+/// Helper function to calculate a centered rectangle area for modal overlays.
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)

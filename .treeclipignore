@@ -32,7 +32,7 @@ Thumbs.db
 # From .gitignore
 treeclip_*.txt
 .idea
-govm*.txt
+govmr*.txt
 ***.exe
 ***.bat
 target

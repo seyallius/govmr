@@ -1,3 +1,8 @@
+//! Copyright (c) 2026 SeyedAli
+//! Licensed under the MIT License. See LICENSE file in the project root for details.
+//!
+//! Module shim - Shim generation and PATH validation utilities.
+
 use crate::errors::GovmError;
 use std::{
     env,
@@ -7,21 +12,34 @@ use std::{
     path::{Path, PathBuf},
 };
 
+// ------------------------------------------ Types & Impls ------------------------------------- //
+
+/// Manager responsible for generating executable shims and verifying environment PATH integrity.
 pub struct ShimManager {
+    /// Directory where generated shims reside (`~/.govmr/shim`).
     shim_dir: PathBuf,
 }
 impl ShimManager {
+    // ----------------------------------------- Public API ----------------------------------------- //
+
+    /// Creates a new `ShimManager`, ensuring the underlying shim directory exists.
+    ///
+    /// # Errors
+    /// Returns [`GovmError::HomeNotFound`] if the user's home directory cannot be determined,
+    /// or [`GovmError::Io`] if directory creation fails.
     pub fn new() -> Result<Self, GovmError> {
         let home = dirs::home_dir().ok_or(GovmError::HomeNotFound)?;
-        let shim_dir = home.join(".govm").join("shim");
+        let shim_dir = home.join(".govmr").join("shim");
         fs::create_dir_all(&shim_dir)?;
         Ok(Self { shim_dir })
     }
 
+    /// Returns a reference to the directory containing executable shims.
     pub fn get_shim_dir(&self) -> &Path {
         &self.shim_dir
     }
 
+    /// Checks if the GoVMR shim directory is present in the system's `PATH` environment variable.
     pub fn is_in_path(&self) -> bool {
         if let Some(paths) = env::var_os("PATH") {
             for path in env::split_paths(&paths) {
@@ -33,6 +51,13 @@ impl ShimManager {
         false
     }
 
+    /// Generates shims for all executables found within the specified version binary directory.
+    ///
+    /// # Arguments
+    /// * `bin_dir` - Path to the `bin/` directory of the installed Go toolchain.
+    ///
+    /// # Errors
+    /// Returns [`GovmError::Io`] if reading the directory or writing shims fails.
     pub fn setup_shims_for_version(&self, bin_dir: &Path) -> Result<(), GovmError> {
         for entry in fs::read_dir(bin_dir)? {
             let entry = entry?;
@@ -48,6 +73,7 @@ impl ShimManager {
         Ok(())
     }
 
+    /// Creates an executable POSIX shell script shim pointing to the target binary.
     #[cfg(unix)]
     fn create_shim(&self, bin_name: &str, target_path: &Path) -> Result<(), GovmError> {
         let shim_path = self.shim_dir.join(bin_name);
@@ -61,6 +87,7 @@ impl ShimManager {
         Ok(())
     }
 
+    /// Creates an executable Windows batch file shim pointing to the target binary.
     #[cfg(windows)]
     fn create_shim(&self, bin_name: &str, target_path: &Path) -> Result<(), GovmError> {
         let shim_path = self.shim_dir.join(format!("{}.bat", bin_name));
