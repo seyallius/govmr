@@ -1,0 +1,4 @@
+[workspace]
+publish = true
+repo_url = "https://github.com/seyallius/govmr"
+git_release_enable = true
