@@ -16,12 +16,12 @@ default:
 # Development
 # ------------------------------------------------------------------------------
 
-# Build toolkitrs for windows target with cross (run `cargo install cross` for installation).
+# Build govm for windows target with cross (run `cargo install cross` for installation).
 [group('Development')]
 build-windows-cross:
     cross build --target x86_64-pc-windows-gnu --release
 
-# Build toolkitrs for windows target with cross in verbose mode (run `cargo install cross` for installation).
+# Build govm for windows target with cross in verbose mode (run `cargo install cross` for installation).
 [group('Development')]
 build-windows-cross-v:
     cross build --target x86_64-pc-windows-gnu --release -- --verbose
