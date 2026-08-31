@@ -1,6 +1,6 @@
 [package]
 name = "govmr"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 authors = ["Seyed Ali <seyed.ali.devl@gmail.com>"]
 description = "A fast, asynchronous Go version manager written in Rust with an interactive TUI."
