@@ -252,7 +252,7 @@ pub async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
                 Some(name) => {
                     manager.set_theme(name)?;
                     println!(
-                        "{} Theme set to {} (saved to ~/.govmr/config)",
+                        "{} Theme set to {} (saved to ~/.govmr/config.toml)",
                         paint(GREEN, "🎨"),
                         paint(CYAN, name.title())
                     );
