@@ -1,0 +1,6 @@
+treeclip_*.txt
+.idea
+govm*.txt
+***.exe
+***.bat
+target
