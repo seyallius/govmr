@@ -1,0 +1,97 @@
+use crate::manager::GoManager;
+use anyhow::Result;
+use clap::{Parser, Subcommand};
+use indicatif::{ProgressBar, ProgressStyle};
+use std::sync::Arc;
+
+#[derive(Parser)]
+#[command(name = "govm", about = "Go Version Manager in Rust", version)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+pub enum Commands {
+    Install { version: String },
+    Use { version: String },
+    Delete { version: String },
+    List,
+}
+
+pub async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
+    match cli.command {
+        Some(Commands::Install { version }) => {
+            let clean_ver = version.trim_start_matches("go");
+            println!("🔍 Resolving Go version: {}...", clean_ver);
+            let versions = manager.fetch_versions().await?;
+            let target = versions
+                .iter()
+                .find(|v| v.raw_version == clean_ver || v.raw_version.starts_with(clean_ver))
+                .ok_or_else(|| anyhow::anyhow!("Version {} not found", clean_ver))?;
+
+            let pb = ProgressBar::new(100);
+            pb.set_style(
+                ProgressStyle::default_bar()
+                    .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+                    .unwrap(),
+            );
+
+            let pb_clone = pb.clone();
+            manager
+                .download_and_install(target, move |p| {
+                    pb_clone.set_position((p * 100.0) as u64);
+                })
+                .await?;
+
+            pb.finish_with_message("Installation complete!");
+            println!("✅ Successfully installed Go {}", target.raw_version);
+        }
+        Some(Commands::Use { version }) => {
+            let clean_ver = version.trim_start_matches("go");
+            let versions = manager.fetch_versions().await?;
+            let target = versions
+                .iter()
+                .find(|v| {
+                    (v.raw_version == clean_ver || v.raw_version.starts_with(clean_ver))
+                        && v.installed
+                })
+                .ok_or_else(|| anyhow::anyhow!("Installed version {} not found", clean_ver))?;
+
+            let in_path = manager.switch_version(target)?;
+            println!("✅ Switched to Go {}", target.raw_version);
+            if !in_path {
+                println!("⚠️  GoVM shim is not in your PATH. Please configure your shell.");
+            }
+        }
+        Some(Commands::Delete { version }) => {
+            let clean_ver = version.trim_start_matches("go");
+            let versions = manager.fetch_versions().await?;
+            let target = versions
+                .iter()
+                .find(|v| v.raw_version == clean_ver && v.installed)
+                .ok_or_else(|| anyhow::anyhow!("Installed version {} not found", clean_ver))?;
+
+            manager.delete_version(target)?;
+            println!("✅ Successfully deleted Go {}", target.raw_version);
+        }
+        Some(Commands::List) => {
+            let versions = manager.fetch_versions().await?;
+            let installed: Vec<_> = versions.into_iter().filter(|v| v.installed).collect();
+            if installed.is_empty() {
+                println!("No Go versions installed yet.");
+                return Ok(());
+            }
+            println!("Installed Go versions:");
+            for v in installed {
+                if v.active {
+                    println!("  * {} (active)", v.raw_version);
+                } else {
+                    println!("    {}", v.raw_version);
+                }
+            }
+        }
+        None => unreachable!(),
+    }
+    Ok(())
+}
