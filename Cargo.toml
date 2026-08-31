@@ -33,7 +33,6 @@ tar = "0.4"
 zip = "2.1"
 dirs = "5.0"
 futures-util = "0.3.34"
-toml = "0.8"
 
 [profile.release]
 opt-level = 3

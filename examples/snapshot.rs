@@ -1,7 +1,6 @@
 //! Renders key TUI screens to plain-text + ANSI snapshots for visual inspection.
 use govmr::app::{ActiveTab, AppState, BusyState, Phase};
 use govmr::models::GoVersion;
-use govmr::theme::{Theme, ThemeName};
 use govmr::tui::views::{render, render_overlays};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -113,14 +112,8 @@ fn main() {
         s.show_help = true;
         s.shim_path = "/home/ali/.govmr/shim".into();
     });
-    dump("THEME PICKER (live preview)", |s| {
+    dump("THEME PICKER", |s| {
         s.show_theme_picker = true;
-        s.theme_picker_index = 4; // Nord previewed
-    });
-    dump("AVAILABLE — LIGHT THEME", |s| {
-        s.theme = Theme::for_name(ThemeName::Light);
-    });
-    dump("AVAILABLE — DRACULA", |s| {
-        s.theme = Theme::for_name(ThemeName::Dracula);
+        s.theme_picker_index = 1;
     });
 }

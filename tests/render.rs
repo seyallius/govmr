@@ -185,42 +185,6 @@ fn alternate_theme_still_renders_without_panicking() {
 }
 
 #[test]
-fn light_theme_fills_screen_with_light_background() {
-    use ratatui::style::Color;
-    let mut terminal = make_terminal();
-    let mut state = AppState::from_versions(versions_fixture(), true);
-    state.theme = Theme::for_name(ThemeName::Light);
-    terminal.draw(|f| render(f, &mut state)).unwrap();
-
-    let area = terminal.backend().buffer().area();
-    // Sample several cells; they should all carry the light background.
-    let mut seen_light_bg = false;
-    for y in 0..area.height {
-        for x in 0..area.width {
-            if terminal.backend().buffer()[(x, y)].bg == Color::Rgb(250, 250, 248) {
-                seen_light_bg = true;
-            }
-        }
-    }
-    assert!(seen_light_bg, "light theme should paint a solid light background");
-}
-
-#[test]
-fn all_eight_themes_render_in_picker() {
-    let mut terminal = make_terminal();
-    let mut state = AppState::from_versions(versions_fixture(), true);
-    state.show_theme_picker = true;
-    terminal
-        .draw(|f| {
-            render(f, &mut state);
-            render_overlays(f, &state);
-        })
-        .unwrap();
-    let text = buffer_as_text(terminal.backend().buffer());
-    assert!(text.contains("Nord") && text.contains("Dracula") && text.contains("Light"));
-}
-
-#[test]
 fn selection_navigation_wraps_within_visible_list() {
     let mut state = AppState::from_versions(versions_fixture(), true);
     state.next_item();
