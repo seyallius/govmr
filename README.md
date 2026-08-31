@@ -16,9 +16,12 @@ for scripting and automation.
     - Animated braille spinners for every background task (refresh, switch, delete, install).
     - Rounded-corners theme, branded header showing the active version, and an inline PATH-setup help overlay (`h`).
     - Keyboard navigation (vim keys + arrows).
-- **Selectable color themes**: Five built-in schemes (**Go Cyan** default, **Midnight** dark, **Matrix Green**, **Amber
-  Glow**, **Monochrome**). Pick one in the TUI with `T` (live preview + number-key shortcuts) and it is saved
-  permanently to `~/.govmr/config` — or set it from the CLI with `govmr theme <name>`. Change it again any time.
+- **Selectable color themes**: Eight built-in schemes — **Go Cyan** (default), **Midnight** (dark indigo), **Matrix
+  Green**, **Amber Glow**, **Nord**, **Dracula**, **Light** (bright high-contrast), and **Monochrome**. Press `T` in the
+  TUI to open a picker with a *live dashboard preview* behind it (arrows/`jk` to move, number keys
+  `1–8` for instant pick, `Enter` to save, `Esc` to cancel). Your choice is stored as TOML in
+  `~/.govmr/config.toml` and reloaded on every launch — or set it from the CLI with `govmr theme <name>`. Change it
+  again any time. (An old plain-text `~/.govmr/config` is migrated automatically.)
 - **CLI progress bar**: `govmr install` shows a colored byte/speed/ETA bar that morphs into a spinner during extraction.
 - **Non-Destructive Version Switching**: Uses executable shims (`~/.govmr/shim`) to instantly switch active versions
   without modifying global binary paths.
@@ -155,8 +158,9 @@ govmr --help
   `InstallProgress` events for download speed/ETA and extraction phase), decompression, and disk persistence.
 * **`src/shim.rs`**: Manages shell wrappers inside `~/.govmr/shim` to forward execution to the currently active Go
   binary.
-* **`src/tui/`**: Terminal UI — `views.rs` (dashboard, lists, modals, gauges), `styles.rs` (Go-cyan theme), and
+* **`src/tui/`**: Terminal UI — `views.rs` (dashboard, lists, modals, gauges, theme picker) and
   `setup.rs` (onboarding / help overlay) — via Ratatui.
+* **`src/theme.rs`**: The eight color schemes; **`src/config.rs`** persists preferences to `~/.govmr/config.toml`.
 * **`src/cli.rs`**: Subcommand definitions and execution pathways using Clap and Indicatif.
 
 ## Testing

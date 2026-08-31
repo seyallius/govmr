@@ -13,7 +13,7 @@ use ratatui::{
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Block, BorderType, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph, Tabs,
+        Block, BorderType, Borders, Gauge, List, ListItem, ListState, Paragraph, Tabs,
     },
 };
 
@@ -31,6 +31,9 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     state.tick_count = state.tick_count.wrapping_add(1);
     let size = frame.area();
     let theme = state.theme;
+
+    // ---- Background fill (makes light themes solid) ----------------------------------------- //
+    frame.render_widget(Block::default().style(Style::default().bg(theme.bg)), size);
 
     // ---- Outer branded container ------------------------------------------------------------ //
     let title = Line::from(vec![
@@ -56,6 +59,7 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(theme.border())
+        .style(Style::default().bg(theme.bg))
         .title(title)
         .title_alignment(Alignment::Left)
         .title(right_title)
@@ -84,11 +88,12 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         .split(inner);
 
     // A centered modal covers the chrome areas; hide the pieces that would
-    // otherwise bleed through the modal edges.
+    // otherwise bleed through the modal edges. The theme picker is deliberately
+    // NOT included here: it paints an opaque background itself, so the live
+    // dashboard stays visible behind it as a real-time preview.
     let modal_active = matches!(state.busy, Some(BusyState::Installing { .. }))
         || state.confirming_delete.is_some()
-        || state.show_help
-        || state.show_theme_picker;
+        || state.show_help;
 
     let mut idx = 0;
     if show_warning && !modal_active {
@@ -205,12 +210,13 @@ fn render_tabs(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
 fn render_content(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) {
     let visible: Vec<usize> = visible_indices(state);
 
-    // While a modal is on screen, hide the list entirely so padded rows and
-    // borders can't bleed through the modal (the modal clears its own area).
+    // While a blocking modal is on screen, hide the list entirely so padded
+    // rows and borders can't bleed through the modal. The theme picker paints
+    // its own opaque background and is intentionally left out so the preview
+    // dashboard remains visible behind it.
     let modal_up = matches!(state.busy, Some(BusyState::Installing { .. }))
         || state.confirming_delete.is_some()
-        || state.show_help
-        || state.show_theme_picker;
+        || state.show_help;
     if modal_up {
         return;
     }
@@ -455,14 +461,15 @@ fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme)
 
 /// Renders the color-theme picker overlay with a live preview.
 fn render_theme_picker(frame: &mut Frame, screen: Rect, state: &AppState, theme: &Theme) {
-    let area = centered_rect(54, 56, screen);
-    frame.render_widget(Clear, area);
+    let area = centered_rect(58, 62, screen);
+    clear_area(frame, area, theme);
 
     let block = Block::default()
         .title(Span::styled(" 🎨 Color Theme ", theme.title()))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(theme.border());
+        .border_style(theme.border())
+        .style(Style::default().bg(theme.bg));
     frame.render_widget(block, area);
 
     let inner = area.inner(Margin {
@@ -541,6 +548,9 @@ fn theme_tagline(name: ThemeName) -> &'static str {
         ThemeName::Midnight => "deep indigo, low glare",
         ThemeName::Matrix => "retro phosphor green",
         ThemeName::Amber => "warm solarized glow",
+        ThemeName::Nord => "snowstorm blue",
+        ThemeName::Dracula => "dark purple",
+        ThemeName::Light => "bright high contrast",
         ThemeName::Mono => "minimal greyscale",
     }
 }
@@ -560,7 +570,7 @@ fn render_install_modal(frame: &mut Frame, screen: Rect, busy: &BusyState, tick:
     };
 
     let area = centered_rect(62, 38, screen);
-    frame.render_widget(Clear, area);
+    clear_area(frame, area, theme);
 
     let pct = if *total > 0 {
         (*downloaded as f64 / *total as f64 * 100.0).min(100.0)
@@ -575,7 +585,8 @@ fn render_install_modal(frame: &mut Frame, screen: Rect, busy: &BusyState, tick:
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(theme.border());
+        .border_style(theme.border())
+        .style(Style::default().bg(theme.bg));
     frame.render_widget(block, area);
 
     let inner = area.inner(Margin {
@@ -693,13 +704,14 @@ fn render_delete_modal(frame: &mut Frame, screen: Rect, state: &AppState, theme:
     };
 
     let area = centered_rect(58, 30, screen);
-    frame.render_widget(Clear, area);
+    clear_area(frame, area, theme);
 
     let block = Block::default()
         .title(Span::styled(" ⚠ Confirm Deletion ", theme.warning()))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(theme.error());
+        .border_style(theme.error())
+        .style(Style::default().bg(theme.bg));
     frame.render_widget(block, area);
 
     let inner = area.inner(Margin {
@@ -730,6 +742,15 @@ fn render_delete_modal(frame: &mut Frame, screen: Rect, state: &AppState, theme:
 }
 
 // -------------------------------------- Internal Helpers -------------------------------------- //
+
+/// Fills a modal area with the theme background so content beneath is wiped
+/// (this is the theme-aware equivalent of `Clear` and keeps light schemes solid).
+fn clear_area(frame: &mut Frame, area: Rect, theme: &Theme) {
+    frame.render_widget(
+        Block::default().style(Style::default().bg(theme.bg)),
+        area,
+    );
+}
 
 /// Returns the current braille spinner glyph for the given animation tick.
 fn spinner_frame(tick: u64) -> &'static str {

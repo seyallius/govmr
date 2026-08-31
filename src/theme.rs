@@ -19,26 +19,39 @@ pub enum ThemeName {
     Matrix,
     /// Warm solarized amber.
     Amber,
+    /// Snowstorm / Nord blue palette.
+    Nord,
+    /// Dark Dracula purple palette.
+    Dracula,
+    /// Bright high-contrast light scheme.
+    Light,
     /// Minimal greyscale.
     Mono,
 }
+
 impl ThemeName {
     /// Every available theme, in display order.
-    pub const ALL: [ThemeName; 5] = [
+    pub const ALL: [ThemeName; 8] = [
         ThemeName::GoCyan,
         ThemeName::Midnight,
         ThemeName::Matrix,
         ThemeName::Amber,
+        ThemeName::Nord,
+        ThemeName::Dracula,
+        ThemeName::Light,
         ThemeName::Mono,
     ];
 
-    /// Short identifier used in the config file and the CLI (`gocyan`, `midnight`, …).
+    /// Short identifier used in the config file and the CLI.
     pub fn key(self) -> &'static str {
         match self {
             ThemeName::GoCyan => "gocyan",
             ThemeName::Midnight => "midnight",
             ThemeName::Matrix => "matrix",
             ThemeName::Amber => "amber",
+            ThemeName::Nord => "nord",
+            ThemeName::Dracula => "dracula",
+            ThemeName::Light => "light",
             ThemeName::Mono => "mono",
         }
     }
@@ -50,6 +63,9 @@ impl ThemeName {
             ThemeName::Midnight => "Midnight",
             ThemeName::Matrix => "Matrix Green",
             ThemeName::Amber => "Amber Glow",
+            ThemeName::Nord => "Nord",
+            ThemeName::Dracula => "Dracula",
+            ThemeName::Light => "Light",
             ThemeName::Mono => "Monochrome",
         }
     }
@@ -81,7 +97,7 @@ impl Default for ThemeName {
 pub struct Theme {
     /// Primary brand / accent color (borders, highlights, key hints).
     pub brand: Color,
-    /// Darker shade of the brand, used for selection backgrounds.
+    /// Darker shade of the brand, used for selection/gauge backgrounds.
     pub brand_dark: Color,
     /// Success / active color.
     pub success: Color,
@@ -95,6 +111,8 @@ pub struct Theme {
     pub grey: Color,
     /// Primary foreground text color.
     pub fg: Color,
+    /// Screen background fill.
+    pub bg: Color,
 }
 
 impl Theme {
@@ -110,6 +128,7 @@ impl Theme {
                 accent: Color::Rgb(167, 139, 250),
                 grey: Color::Rgb(105, 115, 134),
                 fg: Color::Rgb(224, 232, 240),
+                bg: Color::Rgb(18, 22, 30),
             },
             ThemeName::Midnight => Theme {
                 brand: Color::Rgb(129, 140, 248),
@@ -120,6 +139,7 @@ impl Theme {
                 accent: Color::Rgb(192, 132, 252),
                 grey: Color::Rgb(92, 102, 128),
                 fg: Color::Rgb(203, 213, 225),
+                bg: Color::Rgb(13, 16, 28),
             },
             ThemeName::Matrix => Theme {
                 brand: Color::Rgb(0, 220, 120),
@@ -130,6 +150,7 @@ impl Theme {
                 accent: Color::Rgb(0, 200, 190),
                 grey: Color::Rgb(88, 120, 96),
                 fg: Color::Rgb(190, 255, 205),
+                bg: Color::Rgb(4, 12, 8),
             },
             ThemeName::Amber => Theme {
                 brand: Color::Rgb(255, 183, 77),
@@ -140,6 +161,40 @@ impl Theme {
                 accent: Color::Rgb(214, 160, 255),
                 grey: Color::Rgb(140, 122, 96),
                 fg: Color::Rgb(236, 226, 206),
+                bg: Color::Rgb(24, 19, 12),
+            },
+            ThemeName::Nord => Theme {
+                brand: Color::Rgb(136, 192, 208),
+                brand_dark: Color::Rgb(59, 66, 82),
+                success: Color::Rgb(163, 190, 140),
+                error: Color::Rgb(191, 97, 106),
+                warning: Color::Rgb(235, 203, 139),
+                accent: Color::Rgb(180, 142, 173),
+                grey: Color::Rgb(118, 128, 146),
+                fg: Color::Rgb(216, 222, 233),
+                bg: Color::Rgb(46, 52, 64),
+            },
+            ThemeName::Dracula => Theme {
+                brand: Color::Rgb(189, 147, 249),
+                brand_dark: Color::Rgb(68, 42, 110),
+                success: Color::Rgb(80, 250, 123),
+                error: Color::Rgb(255, 85, 85),
+                warning: Color::Rgb(241, 250, 140),
+                accent: Color::Rgb(255, 121, 198),
+                grey: Color::Rgb(98, 114, 164),
+                fg: Color::Rgb(248, 248, 242),
+                bg: Color::Rgb(40, 42, 54),
+            },
+            ThemeName::Light => Theme {
+                brand: Color::Rgb(0, 121, 107),
+                brand_dark: Color::Rgb(178, 223, 219),
+                success: Color::Rgb(21, 116, 63),
+                error: Color::Rgb(197, 16, 32),
+                warning: Color::Rgb(176, 116, 0),
+                accent: Color::Rgb(119, 62, 160),
+                grey: Color::Rgb(120, 128, 138),
+                fg: Color::Rgb(24, 28, 34),
+                bg: Color::Rgb(250, 250, 248),
             },
             ThemeName::Mono => Theme {
                 brand: Color::Rgb(228, 228, 228),
@@ -150,8 +205,14 @@ impl Theme {
                 accent: Color::Rgb(150, 150, 150),
                 grey: Color::Rgb(112, 112, 112),
                 fg: Color::Rgb(226, 226, 226),
+                bg: Color::Rgb(20, 20, 20),
             },
         }
+    }
+
+    /// Whether this is a light (bright-background) scheme.
+    pub fn is_light(&self) -> bool {
+        matches!(self.bg, Color::Rgb(r, _, _) if r > 200)
     }
 
     // ------------------------------------------- Styles ------------------------------------------- //

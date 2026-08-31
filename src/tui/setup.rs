@@ -11,7 +11,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::Style,
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    widgets::{Block, BorderType, Borders, Paragraph},
 };
 use std::io;
 
@@ -52,7 +52,10 @@ pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str, theme:
     let pct_x = if screen.width >= 90 { 78 } else { 92 };
     let pct_y = if screen.height >= 26 { 56 } else { 84 };
     let area = centered_rect(pct_x, pct_y, screen);
-    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Block::default().style(Style::default().bg(theme.bg)),
+        area,
+    );
 
     let block = Block::default()
         .title(Line::from(vec![
@@ -61,7 +64,8 @@ pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str, theme:
         ]))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(theme.border());
+        .border_style(theme.border())
+        .style(Style::default().bg(theme.bg));
     frame.render_widget(block, area);
 
     let inner = area.inner(Margin {
