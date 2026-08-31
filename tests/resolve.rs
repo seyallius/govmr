@@ -60,10 +60,7 @@ fn resolver_picks_newest_stable_for_prefix() {
     let got = resolve_version("1.24rc1", &versions).unwrap();
     assert_eq!(got.raw_version, "1.24rc1");
 
-    assert!(
-        resolve_version("1.2", &versions).is_none(),
-        "no 1.2 line present"
-    );
+    assert!(resolve_version("1.2", &versions).is_none(), "no 1.2 line present");
 }
 
 #[test]
