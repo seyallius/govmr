@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/seyallius/govmr/compare/v0.1.2...v0.1.3) - 2026-09-01
+
+### Added
+
+- *(theme)* add eight themes with live picker and background fill
+- *(config)* add TOML config with legacy migration
+- *(theme)* add persistent, selectable color themes for the TUI
+
+### Fixed
+
+- *(resolve)* implement semver‑aware version prefix matching
+
+### Other
+
+- *(app)* reorganize Action enum and visible_indices
+
 ## [0.1.2](https://github.com/seyallius/govmr/compare/v0.1.1...v0.1.2) - 2026-08-31
 
 ### Added
