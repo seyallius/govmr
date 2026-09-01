@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/seyallius/govmr/compare/v0.1.3...v0.1.4) - 2026-09-01
+
+### Added
+
+- *(logging)* append operation log with 1 MiB rotation
+- *(theme)* add eight themes with live picker and background fill
+- *(config)* add TOML config with legacy migration
+- *(theme)* add persistent, selectable color themes for the TUI
+
+### Fixed
+
+- *(manager)* reject non-2xx responses and non-archive payloads
+- *(app)* own Refreshing lifecycle in refresh_versions to prevent stuck spinner
+
 ## [0.1.3](https://github.com/seyallius/govmr/compare/v0.1.2...v0.1.3) - 2026-09-01
 
 ### Added
