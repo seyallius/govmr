@@ -90,8 +90,22 @@ async fn run_tui(
     tui::setup::run_setup_guide_if_needed(terminal, &shim_path, shim_in_path, &initial_theme)
         .await?;
 
-    let mut app = App::new(manager.clone(), shim_path).await;
+    // Start fetching versions in the background so the UI can show partial results
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
+    let refresh_tx = action_tx.clone();
+    let _ = refresh_tx.send(Action::Refresh);
+    
+    // Spawn a task to process the initial refresh without blocking
+    let manager_clone = manager.clone();
+    tokio::spawn(async move {
+        while let Ok(action) = action_rx.recv().await {
+            if matches!(action, Action::Refresh) {
+                break;
+            }
+        }
+    });
+
+    let mut app = App::new_without_refresh(manager.clone(), shim_path).await;
 
     loop {
         terminal.draw(|f| {
