@@ -9,8 +9,7 @@ use crate::{
     theme::{Theme, ThemeName},
 };
 use ratatui::widgets::ListState;
-use std::sync::Arc;
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
@@ -206,6 +205,8 @@ impl AppState {
 pub enum Action {
     /// Reload remote version list from `go.dev`.
     Refresh,
+    /// Finished reloading remote version list.
+    RefreshDone(Result<Vec<GoVersion>, String>),
     /// Download and install the specified Go version.
     Install(GoVersion),
     /// A progress event emitted mid-installation.
@@ -232,10 +233,10 @@ impl App {
 
     /// Instantiates a new application controller, performing initial version manifest loading.
     ///
-    /// The initial load goes through [`App::refresh_versions`], which now owns the
-    /// `BusyState::Refreshing` lifecycle, so `state.busy` is guaranteed `None` once
-    /// construction finishes and the `i`/`u`/`d`/`r` keys work immediately.
-    pub async fn new(manager: Arc<GoManager>, shim_path: String) -> Self {
+    /// The initial version fetch is dispatched via the `Action::Refresh`
+    /// message in the main event loop, allowing the UI to render immediately
+    /// and show a loading state while the network request proceeds.
+    pub fn new(manager: Arc<GoManager>, shim_path: String) -> Self {
         let is_in_path = manager.get_shim_manager().is_in_path();
         let current_theme = manager.theme_name();
         let theme_picker_index = ThemeName::ALL
@@ -243,7 +244,7 @@ impl App {
             .position(|t| *t == current_theme)
             .unwrap_or(0);
 
-        let mut app = Self {
+        Self {
             state: AppState {
                 versions: Vec::new(),
                 list_state: ListState::default(),
@@ -262,17 +263,14 @@ impl App {
                 tick_count: 0,
             },
             manager,
-        };
-
-        app.refresh_versions().await;
-        debug_assert!(!app.is_busy(), "App::new left the app in a busy state");
-        app
+        }
     }
 
     /// Asynchronously refreshes the version list from the GoManager.
-    ///
-    /// Owns the `BusyState::Refreshing` lifecycle: raises the flag on entry and
-    /// clears it on *every* exit, so callers cannot forget (the stuck-spinner bug).
+    #[deprecated(
+        since = "1.0.0",
+        note = "This method is obsolete - version fetching is now handled by background tasks via handle_actions"
+    )]
     pub async fn refresh_versions(&mut self) {
         self.state.busy = Some(BusyState::Refreshing);
         match self.manager.fetch_versions().await {

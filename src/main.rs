@@ -10,16 +10,16 @@ use clap::Parser;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use govmr::{
     app::{Action, App, BusyState, MsgKind, Phase},
-    cli::{handle_cli, Cli},
+    cli::{Cli, handle_cli},
     logging,
     manager::GoManager,
     tui,
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{Terminal, backend::CrosstermBackend};
 use std::{io, sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 
@@ -87,11 +87,14 @@ async fn run_tui(
         .to_string();
     let shim_in_path = manager.get_shim_manager().is_in_path();
     let initial_theme = manager.theme();
+
+    let mut app = App::new(manager.clone(), shim_path.clone());
+    let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
+
+    let _ = action_tx.send(Action::Refresh);
+
     tui::setup::run_setup_guide_if_needed(terminal, &shim_path, shim_in_path, &initial_theme)
         .await?;
-
-    let mut app = App::new(manager.clone(), shim_path).await;
-    let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
 
     loop {
         terminal.draw(|f| {
@@ -248,8 +251,8 @@ async fn run_tui(
 
 /// Drains and processes all queued background actions for one event-loop tick.
 ///
-/// Each arm only manages the busy state of its *own* operation (Switching,
-/// Deleting, Installing); the Refreshing flag lives inside `refresh_versions`.
+/// Each arm only manages the busy state of its *own* operation. Long-running
+/// tasks are spawned and report back via the MPSC channel to keep the UI fluid.
 async fn handle_actions(
     action_rx: &mut mpsc::UnboundedReceiver<Action>,
     app: &mut App,
@@ -259,7 +262,28 @@ async fn handle_actions(
     while let Ok(action) = action_rx.try_recv() {
         match action {
             Action::Refresh => {
-                app.refresh_versions().await;
+                app.state.busy = Some(BusyState::Refreshing);
+                let mgr = manager.clone();
+                let tx = action_tx.clone();
+
+                // Spawn a background task to fetch versions without blocking the render loop
+                tokio::spawn(async move {
+                    let result = mgr.fetch_versions().await;
+                    let _ = tx.send(Action::RefreshDone(result.map_err(|e| e.to_string())));
+                });
+            }
+            Action::RefreshDone(result) => {
+                app.state.busy = None;
+                match result {
+                    Ok(versions) => {
+                        app.state.versions = versions;
+                        app.state.status_message = None;
+                        app.clamp_selection();
+                    }
+                    Err(e) => {
+                        app.set_status(e, MsgKind::Error);
+                    }
+                }
             }
             Action::Install(v) => {
                 app.state.busy = Some(BusyState::Installing {
@@ -271,10 +295,10 @@ async fn handle_actions(
                     started_at: std::time::Instant::now(),
                 });
                 app.state.status_message = None;
-
                 let mgr = manager.clone();
                 let progress_tx = action_tx.clone();
                 let done_tx = action_tx.clone();
+
                 tokio::spawn(async move {
                     let progress_tx2 = progress_tx.clone();
                     let result = mgr
@@ -301,7 +325,7 @@ async fn handle_actions(
                     format!("Go {} installed successfully", v.raw_version),
                     MsgKind::Success,
                 );
-                app.refresh_versions().await;
+                let _ = action_tx.send(Action::Refresh);
             }
             Action::InstallFailed(err) => {
                 logging::error(&format!("install failed: {err}"));
@@ -320,7 +344,7 @@ async fn handle_actions(
                         app.set_status(e.to_string(), MsgKind::Error)
                     }
                 }
-                app.refresh_versions().await; // exits with busy == None
+                let _ = action_tx.send(Action::Refresh);
             }
             Action::Delete(v) => {
                 app.state.busy = Some(BusyState::Deleting(v.raw_version.clone()));
@@ -333,7 +357,7 @@ async fn handle_actions(
                         app.set_status(e.to_string(), MsgKind::Error)
                     }
                 }
-                app.refresh_versions().await;
+                let _ = action_tx.send(Action::Refresh);
             }
         }
     }
