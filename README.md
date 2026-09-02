@@ -1,5 +1,13 @@
 # GoVMR - Go Version Manager (Rust Edition)
 
+> WIP - Current version is still a prototype
+
+![GitHub Release Downloads](https://img.shields.io/github/downloads/seyallius/govmr/total?label=downloads&logo=github&color=pink&style=for-the-badge)
+![Latest Release Downloads](https://img.shields.io/github/downloads/seyallius/toolkit/latest/total?label=latest%20release&logo=github&style=for-the-badge)
+![Crates.io Downloads](https://img.shields.io/crates/d/govmr?label=cargo%20installs&logo=rust&color=orange&style=for-the-badge)
+![GitHub Stars](https://img.shields.io/github/stars/seyallius/toolkit?style=social)
+
+<br/>
 A high-performance, asynchronous Go Version Manager written in Rust. GoVMR features a slick, interactive Terminal User
 Interface (TUI) powered by Ratatui, as well as a full-featured Command Line Interface (CLI)
 for scripting and automation.
@@ -30,23 +38,50 @@ for scripting and automation.
   without modifying global binary paths.
 - **Cross-Platform**: Full support for Linux, macOS, and Windows.
 - **Operation log**: every fetch/install/switch/delete/theme change is appended to
-  `~/.govmr/govmr.log` (UTC timestamps, 1 MiB rotation) — your post-mortem trail when
-  the TUI owns the screen and stdout is unusable.
+  `~/.govmr/govmr.log` (UTC timestamps, 1 MiB rotation) — your post-mortem trail when the TUI owns the screen and stdout
+  is unusable.
 
 ---
 
 ## Installation
 
-### From `cargo-binstall` (Recommended)
+### Quick Install (Linux / macOS)
 
 ```bash
-# If you don't have binstall
+curl -fsSL https://raw.githubusercontent.com/seyallius/govmr/main/install.sh | bash
+```
+
+*To install a specific version:*
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/seyallius/govmr/main/install.sh | bash -s v0.1.8
+```
+
+### Quick Install (Windows)
+
+Open PowerShell and run:
+
+```powershell
+irm https://raw.githubusercontent.com/seyallius/govmr/main/install.ps1 | iex
+```
+
+*To install a specific version:*
+
+```powershell
+iex "& { $(irm https://raw.githubusercontent.com/seyallius/govmr/main/install.ps1) } -Version v0.1.8"
+```
+
+### Pre-built Binary (via Cargo Binstall)
+
+```bash
+# Install cargo-binstall first if you haven't
 cargo install cargo-binstall
 
+# Then install govmr instantly
 cargo binstall govmr
 ```
 
-### From `cargo`
+### From crates.io (Compile from source)
 
 ```bash
 cargo install govmr
@@ -59,7 +94,7 @@ Ensure you have Rust and Cargo installed:
 ```bash
 git clone https://github.com/seyallius/govmr.git
 cd govmr
-cargo build --release
+cargo install --path .
 ```
 
 Move the compiled binary to your `PATH`:
