@@ -12,6 +12,44 @@ A high-performance, asynchronous Go Version Manager written in Rust. GoVMR featu
 Interface (TUI) powered by Ratatui, as well as a full-featured Command Line Interface (CLI)
 for scripting and automation.
 
+## 🎬 Demo
+
+Quick preview of key features:
+
+- **Dashboard**: Browsing versions
+- **Theme Picker**: Browse all 8 themes with live preview
+- **Logs & Config**: Automatic logging and persistent settings
+
+<details>
+
+### 📦 Dashboard & Installation
+
+*Browsing available versions*
+
+<a href="docs/assets/dashboard_c.gif">
+  <img src="docs/assets/dashboard_c.gif" alt="GoVMR TUI Demo" width="800"/>
+</a>
+
+### Color Theme Picker
+
+*Live preview of all 8 themes - arrows to browse, Enter to apply*
+
+<a href="docs/assets/theme_c.gif">
+<img src="docs/assets/theme_c.gif" alt="Theme picker with live preview" width="800"/>
+</a>
+
+### Logs and Config
+
+*Automatic logging and persistent settings in ~/.govmr/*
+
+<a href="docs/assets/logsandconfig_c.gif">
+<img src="docs/assets/logsandconfig_c.gif" alt="Logs and Config" width="800"/>
+</a>
+
+<sub>⚡ All demos are under 500KB for fast loading</sub>
+
+</details>
+
 ## Features
 
 - **Blazing Fast & Lightweight**: Zero external runtime dependencies; compiled directly to a standalone native binary.
