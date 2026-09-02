@@ -4,7 +4,7 @@
 //! Module setup - Interactive onboarding screen and in-app PATH help overlay.
 
 use crate::theme::Theme;
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
     Frame, Terminal,
     backend::Backend,
@@ -17,6 +17,8 @@ use std::io;
 
 /// Checks if the shim directory is in `PATH` and presents an interactive setup guide if missing.
 ///
+/// Returns `true` if the user wants to continue to the main TUI, or `false` if they pressed a quit key.
+///
 /// # Errors
 /// Returns [`io::Error`] if terminal rendering or event polling fails.
 pub async fn run_setup_guide_if_needed<B: Backend>(
@@ -24,24 +26,29 @@ pub async fn run_setup_guide_if_needed<B: Backend>(
     shim_path: &str,
     shim_in_path: bool,
     theme: &Theme,
-) -> io::Result<()> {
+) -> io::Result<bool> {
     if shim_in_path {
-        return Ok(());
+        return Ok(true);
     }
 
     loop {
         terminal.draw(|f| draw_setup_modal(f, f.area(), shim_path, theme))?;
-
         if let Event::Key(key) = event::read()? {
-            if key.code == KeyCode::Enter
-                || key.code == KeyCode::Char('q')
-                || key.code == KeyCode::Esc
-            {
-                break;
+            // Only react to physical key presses, ignoring release/repeat artifacts
+            if key.kind == KeyEventKind::Press {
+                // Universal quit shortcuts exit the setup guide entirely
+                if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    return Ok(false);
+                }
+                if key.code == KeyCode::Char('q') {
+                    return Ok(false);
+                }
+
+                // ANY other key press closes the modal and proceeds to the app
+                return Ok(true);
             }
         }
     }
-    Ok(())
 }
 
 /// Draws the PATH-setup help overlay centered on the current frame.
@@ -52,10 +59,7 @@ pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str, theme:
     let pct_x = if screen.width >= 90 { 78 } else { 92 };
     let pct_y = if screen.height >= 26 { 56 } else { 84 };
     let area = centered_rect(pct_x, pct_y, screen);
-    frame.render_widget(
-        Block::default().style(Style::default().bg(theme.bg)),
-        area,
-    );
+    frame.render_widget(Block::default().style(Style::default().bg(theme.bg)), area);
 
     let block = Block::default()
         .title(Line::from(vec![

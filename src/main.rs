@@ -88,13 +88,18 @@ async fn run_tui(
     let shim_in_path = manager.get_shim_manager().is_in_path();
     let initial_theme = manager.theme();
 
+    let should_continue =
+        tui::setup::run_setup_guide_if_needed(terminal, &shim_path, shim_in_path, &initial_theme)
+            .await?;
+
+    if !should_continue {
+        return Ok(());
+    }
+
     let mut app = App::new(manager.clone(), shim_path.clone());
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
 
     let _ = action_tx.send(Action::Refresh);
-
-    tui::setup::run_setup_guide_if_needed(terminal, &shim_path, shim_in_path, &initial_theme)
-        .await?;
 
     loop {
         terminal.draw(|f| {
@@ -110,12 +115,16 @@ async fn run_tui(
                     continue;
                 }
 
+                // Universal quit shortcuts MUST bypass modal capture.
                 if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
                     break;
                 }
 
-                // Help overlay captures every key until dismissed.
+                // Help overlay captures every OTHER key until dismissed, EXCEPT 'q' which quits the app.
                 if app.state.show_help {
+                    if key.code == KeyCode::Char('q') {
+                        break;
+                    }
                     app.state.show_help = false;
                     continue;
                 }
