@@ -4,7 +4,7 @@
 //! Module views - Main layout composition, widget rendering, and modal views for Ratatui.
 
 use super::setup::draw_setup_modal;
-use crate::app::{visible_indices, ActiveTab, AppState, BusyState, MsgKind, Phase};
+use crate::app::{ActiveTab, AppState, BusyState, MsgKind, Phase, visible_indices};
 use crate::models::GoVersion;
 use crate::theme::{Theme, ThemeName};
 use ratatui::{
@@ -12,9 +12,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{
-        Block, BorderType, Borders, Gauge, List, ListItem, ListState, Paragraph, Tabs,
-    },
+    widgets::{Block, BorderType, Borders, Gauge, List, ListItem, ListState, Paragraph, Tabs},
 };
 
 /// Braille spinner frames cycled through by [`spinner_frame`].
@@ -187,8 +185,16 @@ fn render_tabs(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
     };
 
     let titles = vec![
-        tab("Available", available_count, state.active_tab == ActiveTab::Available),
-        tab("Installed", installed_count, state.active_tab == ActiveTab::Installed),
+        tab(
+            "Available",
+            available_count,
+            state.active_tab == ActiveTab::Available,
+        ),
+        tab(
+            "Installed",
+            installed_count,
+            state.active_tab == ActiveTab::Installed,
+        ),
     ];
 
     let tabs = Tabs::new(titles)
@@ -206,18 +212,46 @@ fn render_tabs(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
     frame.render_widget(tabs, area);
 }
 
-/// Renders the active tab's content list.
+/// Renders the active tab's content list, or a prominent centered loading spinner
+/// if the initial version manifest is currently being fetched from the network.
 fn render_content(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &Theme) {
     let visible: Vec<usize> = visible_indices(state);
 
     // While a blocking modal is on screen, hide the list entirely so padded
-    // rows and borders can't bleed through the modal. The theme picker paints
-    // its own opaque background and is intentionally left out so the preview
-    // dashboard remains visible behind it.
+    // rows and borders can't bleed through the modal.
     let modal_up = matches!(state.busy, Some(BusyState::Installing { .. }))
         || state.confirming_delete.is_some()
         || state.show_help;
     if modal_up {
+        return;
+    }
+
+    if state.versions.is_empty() && matches!(state.busy, Some(BusyState::Refreshing)) {
+        let block = content_block(theme);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+
+        // Use layout constraints to vertically center the loading message
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(40),
+                Constraint::Length(1),
+                Constraint::Percentage(60),
+            ])
+            .split(inner);
+
+        let center_spinner = ["0000", "0001", "0010", "0011", "0100", "0101", "0110", "0111", "1000", "1001", "1010", "1011", "1100", "1101", "1110", "1111"];
+        let spinner_char = center_spinner[(state.tick_count as usize) % center_spinner.len()];
+
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(format!(" {} ", spinner_char), theme.brand_bold()),
+                Span::styled("Fetching Go releases, please wait...", theme.highlight()),
+            ]))
+            .alignment(Alignment::Center),
+            chunks[1],
+        );
         return;
     }
 
@@ -272,7 +306,10 @@ fn available_line(v: &GoVersion, width: u16, theme: &Theme) -> Line<'static> {
             format!(" {:<10}", v.display_name),
             Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
         ),
-        Span::styled(format!("{:>8}", GoVersion::format_size(v.size)), theme.muted()),
+        Span::styled(
+            format!("{:>8}", GoVersion::format_size(v.size)),
+            theme.muted(),
+        ),
         Span::raw("  "),
     ];
 
@@ -416,12 +453,19 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState, theme: &Th
     }
 
     let hint = match state.active_tab {
-        ActiveTab::Available => "Browse official Go releases — i installs, u activates, / searches, T themes.",
-        ActiveTab::Installed => "Your local toolchains — u activates, d removes, / searches, T themes.",
+        ActiveTab::Available => {
+            "Browse official Go releases — i installs, u activates, / searches, T themes."
+        }
+        ActiveTab::Installed => {
+            "Your local toolchains — u activates, d removes, / searches, T themes."
+        }
     };
     frame.render_widget(
-        Paragraph::new(Line::from(vec![Span::styled(format!(" {}", hint), theme.muted())]))
-            .block(block),
+        Paragraph::new(Line::from(vec![Span::styled(
+            format!(" {}", hint),
+            theme.muted(),
+        )]))
+        .block(block),
         area,
     );
 }
@@ -556,7 +600,13 @@ fn theme_tagline(name: ThemeName) -> &'static str {
 }
 
 /// Renders the centered installation progress modal with a live gauge.
-fn render_install_modal(frame: &mut Frame, screen: Rect, busy: &BusyState, tick: u64, theme: &Theme) {
+fn render_install_modal(
+    frame: &mut Frame,
+    screen: Rect,
+    busy: &BusyState,
+    tick: u64,
+    theme: &Theme,
+) {
     let (version, phase, downloaded, total, speed, _started_at) = match busy {
         BusyState::Installing {
             version,
@@ -722,7 +772,10 @@ fn render_delete_modal(frame: &mut Frame, screen: Rect, state: &AppState, theme:
         Line::from(""),
         Line::from(vec![
             Span::styled("  Remove ", theme.modal_body()),
-            Span::styled(format!("Go {}", target), theme.error().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                format!("Go {}", target),
+                theme.error().add_modifier(Modifier::BOLD),
+            ),
             Span::styled(" from your machine?", theme.modal_body()),
         ]),
         Line::from(""),
@@ -746,10 +799,7 @@ fn render_delete_modal(frame: &mut Frame, screen: Rect, state: &AppState, theme:
 /// Fills a modal area with the theme background so content beneath is wiped
 /// (this is the theme-aware equivalent of `Clear` and keeps light schemes solid).
 fn clear_area(frame: &mut Frame, area: Rect, theme: &Theme) {
-    frame.render_widget(
-        Block::default().style(Style::default().bg(theme.bg)),
-        area,
-    );
+    frame.render_widget(Block::default().style(Style::default().bg(theme.bg)), area);
 }
 
 /// Returns the current braille spinner glyph for the given animation tick.
