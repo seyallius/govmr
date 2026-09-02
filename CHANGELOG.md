@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5](https://github.com/seyallius/govmr/compare/v0.1.4...v0.1.5) - 2026-09-02
+
+### Added
+
+- *(tui)* allow any key to dismiss setup guide and help overlay,
+- *(tui)* show loading spinner during initial version fetch
+- *(tui)* implement non-blocking background version fetching
+- *(install)* add one-line installation scripts and README badges
+
+### Other
+
+- *(readme)* add demo GIFs showcasing TUI features
+
 ## [0.1.4](https://github.com/seyallius/govmr/compare/v0.1.3...v0.1.4) - 2026-09-01
 
 ### Added
