@@ -241,7 +241,10 @@ fn render_content(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &T
             ])
             .split(inner);
 
-        let center_spinner = ["0000", "0001", "0010", "0011", "0100", "0101", "0110", "0111", "1000", "1001", "1010", "1011", "1100", "1101", "1110", "1111"];
+        let center_spinner = [
+            "0000", "0001", "0010", "0011", "0100", "0101", "0110", "0111", "1000", "1001", "1010",
+            "1011", "1100", "1101", "1110", "1111",
+        ];
         let spinner_char = center_spinner[(state.tick_count as usize) % center_spinner.len()];
 
         frame.render_widget(
@@ -717,8 +720,10 @@ fn render_install_modal(
                 rows[0],
             );
 
-            // Indeterminate "sweeping" gauge driven by the animation tick.
-            let sweep = ((tick as f64 * 0.15).sin() * 0.5 + 0.5).clamp(0.0, 1.0);
+            // THE PULSE: Smoothly oscillates between 20% and 80%.
+            let wave = (tick as f64 * 0.15).sin(); // Generates a smooth wave from -1.0 to 1.0
+            let pct = (wave * 30.0 + 50.0) as u16; // Maps the wave to a 20% - 80% range
+
             let gauge = Gauge::default()
                 .block(
                     Block::default()
@@ -727,7 +732,7 @@ fn render_install_modal(
                         .border_style(theme.muted()),
                 )
                 .gauge_style(Style::default().fg(theme.success).bg(theme.brand_dark))
-                .percent((sweep * 100.0) as u16)
+                .percent(pct)
                 .label(Span::styled(
                     " unpacking ",
                     Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
