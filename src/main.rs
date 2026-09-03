@@ -344,16 +344,25 @@ async fn handle_actions(
             Action::Use(v) => {
                 app.state.busy = Some(BusyState::Switching(v.raw_version.clone()));
                 match manager.switch_version(&v) {
-                    Ok(_) => app.set_status(
-                        format!("Switched to Go {}", v.raw_version),
-                        MsgKind::Success,
-                    ),
+                    Ok(in_path) => {
+                        app.set_status(
+                            format!("Switched to Go {}", v.raw_version),
+                            MsgKind::Success,
+                        );
+                        
+                        // Update local UI state instantly without a network round-trip
+                        app.state.is_shim_in_path = in_path;
+                        for ver in &mut app.state.versions {
+                            ver.active = ver.raw_version == v.raw_version;
+                        }
+                    }
                     Err(e) => {
                         logging::error(&format!("use failed: {e}"));
                         app.set_status(e.to_string(), MsgKind::Error)
                     }
                 }
-                let _ = action_tx.send(Action::Refresh);
+                // Clear the busy state directly instead of waiting for RefreshDone
+                app.state.busy = None;
             }
             Action::Delete(v) => {
                 app.state.busy = Some(BusyState::Deleting(v.raw_version.clone()));
