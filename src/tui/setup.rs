@@ -15,6 +15,8 @@ use ratatui::{
 };
 use std::io;
 
+// ----------------------------------------- Public API ----------------------------------------- //
+
 /// Checks if the shim directory is in `PATH` and presents an interactive setup guide if missing.
 ///
 /// Returns `true` if the user wants to continue to the main TUI, or `false` if they pressed a quit key.
@@ -54,11 +56,14 @@ pub async fn run_setup_guide_if_needed<B: Backend>(
 /// Draws the PATH-setup help overlay centered on the current frame.
 ///
 /// Used both for first-time onboarding and the in-app `[h]` help overlay.
+/// Platform-specific: shows one command on Unix, two commands (PowerShell + CMD)
+/// plus concrete GUI steps on Windows.
 pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str, theme: &Theme) {
     // Wider on roomy terminals, but clamped so it never overflows small screens.
     let pct_x = if screen.width >= 90 { 78 } else { 92 };
-    let pct_y = if screen.height >= 26 { 56 } else { 84 };
+    let pct_y = if screen.height >= 32 { 68 } else { 88 };
     let area = centered_rect(pct_x, pct_y, screen);
+
     frame.render_widget(Block::default().style(Style::default().bg(theme.bg)), area);
 
     let block = Block::default()
@@ -76,56 +81,91 @@ pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str, theme:
         horizontal: 2,
         vertical: 1,
     });
+
+    #[cfg(unix)]
+    draw_setup_content_unix(frame, inner, shim_path, theme);
+    #[cfg(windows)]
+    draw_setup_content_windows(frame, inner, shim_path, theme);
+}
+
+// -------------------------------------- Internal Helpers -------------------------------------- //
+
+/// Unix layout: one `export` command + copy-pasteable shell profile one-liner.
+#[cfg(unix)]
+fn draw_setup_content_unix(frame: &mut Frame, inner: Rect, shim_path: &str, theme: &Theme) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Length(1),
-            Constraint::Length(3),
-            Constraint::Min(1),
-            Constraint::Length(2),
+            Constraint::Length(2), // Description
+            Constraint::Length(3), // Current-session export command
+            Constraint::Length(1), // Spacer
+            Constraint::Length(3), // Permanent profile one-liner
+            Constraint::Min(1),    // Hint
+            Constraint::Length(2), // Press any key
         ])
         .split(inner);
 
+    // Description
     frame.render_widget(
-        Paragraph::new(vec![
-            Line::from(Span::styled(
-                "Add the GoVMR shim directory to your PATH so `go`",
-                theme.modal_body(),
-            )),
-            Line::from(Span::styled("resolves through GoVMR:", theme.modal_body())),
-        ]),
+        Paragraph::new(Line::from(Span::styled(
+            "Add the GoVMR shim directory to your PATH so `go` resolves through GoVMR.",
+            theme.modal_body(),
+        ))),
         chunks[0],
     );
 
-    #[cfg(unix)]
-    let cmd = format!("export PATH=\"{}:$PATH\"", shim_path);
-    #[cfg(windows)]
-    let cmd = format!("setx PATH \"%PATH%;{}\"", shim_path);
-
-    let cmd_block = Block::default()
+    // Current-session command
+    let session_cmd = format!("export PATH=\"{}:$PATH\"", shim_path);
+    let session_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(theme.border());
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            format!(" $ {} ", cmd),
-            theme.brand_bold(),
-        )))
-        .block(cmd_block)
-        .alignment(Alignment::Center),
-        chunks[2],
-    );
+        .border_style(theme.border())
+        .title(Span::styled(" This session ", theme.muted()));
 
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            "Add the line above to your ~/.bashrc, ~/.zshrc, or shell profile, then reload your shell.",
-            theme.muted(),
+            format!(" $ {} ", session_cmd),
+            theme.brand_bold(),
         )))
-        .wrap(ratatui::widgets::Wrap { trim: true }),
+        .block(session_block),
+        chunks[1],
+    );
+
+    // Permanent profile one-liner (auto-detects shell)
+    let shell_profile = detect_shell_profile();
+    let persist_cmd = format!(
+        "echo 'export PATH=\"{}:$PATH\"' >> {} && source {}",
+        shim_path, shell_profile, shell_profile
+    );
+    let persist_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(theme.border())
+        .title(Span::styled(" Make it permanent ", theme.muted()));
+
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            format!(" $ {} ", persist_cmd),
+            theme.brand_bold(),
+        )))
+        .block(persist_block),
         chunks[3],
     );
 
+    // Hint
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            format!(
+                " Run the second command to persist across reboots (appends to {}).",
+                shell_profile
+            ),
+            theme.muted(),
+        )))
+        .wrap(ratatui::widgets::Wrap { trim: true }),
+        chunks[4],
+    );
+
+    // Press any key
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(" Press ", theme.muted()),
@@ -133,7 +173,143 @@ pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str, theme:
             Span::styled(" to close ", theme.muted()),
         ]))
         .alignment(Alignment::Center),
+        chunks[5],
+    );
+}
+
+/// Best-effort detection of the user's active shell profile file.
+///
+/// Falls back to `~/.bashrc` if `$SHELL` is unset or unrecognized.
+#[cfg(unix)]
+fn detect_shell_profile() -> String {
+    let home = dirs::home_dir()
+        .map(|h| h.to_string_lossy().to_string())
+        .unwrap_or_else(|| "~".to_string());
+
+    match std::env::var("SHELL").unwrap_or_default().as_str() {
+        s if s.ends_with("/zsh") => format!("{}/.zshrc", home),
+        s if s.ends_with("/fish") => format!("{}/.config/fish/config.fish", home),
+        s if s.ends_with("/bash") => format!("{}/.bashrc", home),
+        _ => format!("{}/.bashrc", home),
+    }
+}
+
+/// Windows layout: PowerShell + CMD for current session, safe permanent
+/// PowerShell command, and GUI fallback steps.
+#[cfg(windows)]
+fn draw_setup_content_windows(frame: &mut Frame, inner: Rect, shim_path: &str, theme: &Theme) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2), // Description
+            Constraint::Length(3), // PowerShell current session
+            Constraint::Length(3), // CMD current session
+            Constraint::Length(3), // Permanent PowerShell command
+            Constraint::Min(1),    // GUI fallback + warning
+            Constraint::Length(2), // Press any key
+        ])
+        .split(inner);
+
+    // Description
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "Add the GoVMR shim directory to your PATH so `go` resolves through GoVMR.",
+            theme.modal_body(),
+        ))),
+        chunks[0],
+    );
+
+    // PowerShell — current session
+    let ps_cmd = format!("$env:PATH = \"$env:PATH;{}\"", shim_path);
+    let ps_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(theme.border())
+        .title(Span::styled(" PowerShell — this session ", theme.muted()));
+
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            format!(" {} ", ps_cmd),
+            theme.brand_bold(),
+        )))
+        .block(ps_block),
+        chunks[1],
+    );
+
+    // CMD — current session
+    let cmd_command = format!("set PATH=%PATH%;{}", shim_path);
+    let cmd_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(theme.border())
+        .title(Span::styled(" CMD — this session ", theme.muted()));
+
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            format!(" {} ", cmd_command),
+            theme.brand_bold(),
+        )))
+        .block(cmd_block),
+        chunks[2],
+    );
+
+    // Permanent — safe PowerShell (no 1024-char truncation)
+    let perm_cmd = format!(
+        "[Environment]::SetEnvironmentVariable(\"PATH\", [Environment]::GetEnvironmentVariable(\"PATH\", \"User\") + \";{}\", \"User\")",
+        shim_path
+    );
+    let perm_block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(theme.border())
+        .title(Span::styled(
+            " Make it permanent (PowerShell) ",
+            theme.muted(),
+        ));
+
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            format!(" {} ", perm_cmd),
+            theme.brand_bold(),
+        )))
+        .block(perm_block),
+        chunks[3],
+    );
+
+    // Warning + GUI fallback
+    let notes = vec![
+        Line::from(Span::styled(
+            " ⚠ Avoid `setx` — it can truncate PATH to 1024 chars.",
+            theme.warning(),
+        )),
+        Line::from(Span::styled(
+            " If the command above fails, open System Properties → Advanced →",
+            theme.muted(),
+        )),
+        Line::from(Span::styled(
+            " Environment Variables → User Path → Edit → New → paste the path.",
+            theme.muted(),
+        )),
+        Line::from(Span::styled(
+            " Restart your terminal after making PATH permanent.",
+            theme.muted(),
+        )),
+    ];
+
+    frame.render_widget(
+        Paragraph::new(notes).wrap(ratatui::widgets::Wrap { trim: true }),
         chunks[4],
+    );
+
+    // Press any key
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" Press ", theme.muted()),
+            Span::styled("any key", theme.key_hint()),
+            Span::styled(" to close ", theme.muted()),
+        ]))
+        .alignment(Alignment::Center),
+        chunks[5],
     );
 }
 
