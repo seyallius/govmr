@@ -10,6 +10,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
 };
+
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
@@ -60,15 +61,42 @@ impl ShimManager {
     /// # Errors
     /// Returns [`GovmError::Io`] if reading the directory or writing shims fails.
     pub fn setup_shims_for_version(&self, bin_dir: &Path) -> Result<(), GovmError> {
+        // Sweep out any stale shims before generating the fresh set.
+        self.cleanup_shims()?;
+
         for entry in fs::read_dir(bin_dir)? {
             let entry = entry?;
             let path = entry.path();
             if path.is_file() {
-                let bin_name = match path.file_name() {
+                // Use `file_stem()` to get the binary name WITHOUT the extension.
+                //
+                // On Windows: `go.exe` → `go`, `gofmt.exe` → `gofmt`
+                // On Unix:    `go`     → `go`, `gofmt`     → `gofmt` (no-op)
+                let bin_name = match path.file_stem() {
                     Some(name) => name.to_string_lossy().to_string(),
                     None => continue,
                 };
                 self.create_shim(&bin_name, &path)?;
+            }
+        }
+        Ok(())
+    }
+
+    // -------------------------------------- Internal Helpers -------------------------------------- //
+
+    /// Removes all existing shim files from the shim directory.
+    ///
+    /// Called before generating a fresh shim set to guarantee no stale or
+    /// incorrectly-named shims linger from a previous version or the legacy
+    /// `go.exe.bat` naming bug.
+    fn cleanup_shims(&self) -> Result<(), GovmError> {
+        if self.shim_dir.exists() {
+            for entry in fs::read_dir(&self.shim_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_file() {
+                    let _ = fs::remove_file(&path);
+                }
             }
         }
         Ok(())
