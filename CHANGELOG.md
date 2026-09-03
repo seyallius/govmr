@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/seyallius/govmr/compare/v0.1.5...v0.1.6) - 2026-09-03
+
+### Fixed
+
+- *(setup)* use PowerShell $env:PATH command instead of setx on Windows
+- *(shim)* use file_stem for Windows shim naming and clean up stale
+
+### Other
+
+- *(tui)* remove unnecessary network re-fetch after switching versions
+- *(repo)* add GitHub setup script for milestones, labels, and issues
+
 ## [0.1.5](https://github.com/seyallius/govmr/compare/v0.1.4...v0.1.5) - 2026-09-02
 
 ### Added
