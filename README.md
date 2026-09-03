@@ -24,7 +24,7 @@ Quick preview of key features:
 
 ### 📦 Dashboard & Installation
 
-*Browsing available versions*
+_Browsing available versions_
 
 <a href="docs/assets/dashboard_c.gif">
   <img src="docs/assets/dashboard_c.gif" alt="GoVMR TUI Demo" width="800"/>
@@ -32,7 +32,7 @@ Quick preview of key features:
 
 ### Color Theme Picker
 
-*Live preview of all 8 themes - arrows to browse, Enter to apply*
+_Live preview of all 8 themes - arrows to browse, Enter to apply_
 
 <a href="docs/assets/theme_c.gif">
 <img src="docs/assets/theme_c.gif" alt="Theme picker with live preview" width="800"/>
@@ -40,7 +40,7 @@ Quick preview of key features:
 
 ### Logs and Config
 
-*Automatic logging and persistent settings in ~/.govmr/*
+_Automatic logging and persistent settings in ~/.govmr/_
 
 <a href="docs/assets/logsandconfig_c.gif">
 <img src="docs/assets/logsandconfig_c.gif" alt="Logs and Config" width="800"/>
@@ -64,7 +64,7 @@ Quick preview of key features:
     - Keyboard navigation (vim keys + arrows).
 - **Selectable color themes**: Eight built-in schemes — **Go Cyan** (default), **Midnight** (dark indigo), **Matrix
   Green**, **Amber Glow**, **Nord**, **Dracula**, **Light** (bright high-contrast), and **Monochrome**. Press `T` in the
-  TUI to open a picker with a *live dashboard preview* behind it (arrows/`jk` to move, number keys
+  TUI to open a picker with a _live dashboard preview_ behind it (arrows/`jk` to move, number keys
   `1–8` for instant pick, `Enter` to save, `Esc` to cancel). Your choice is stored as TOML in
   `~/.govmr/config.toml` and reloaded on every launch — or set it from the CLI with `govmr theme <name>`. Change it
   again any time. (An old plain-text `~/.govmr/config` is migrated automatically.)
@@ -89,7 +89,7 @@ Quick preview of key features:
 curl -fsSL https://raw.githubusercontent.com/seyallius/govmr/main/install.sh | bash
 ```
 
-*To install a specific version:*
+_To install a specific version:_
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/seyallius/govmr/main/install.sh | bash -s v0.1.8
@@ -103,7 +103,7 @@ Open PowerShell and run:
 irm https://raw.githubusercontent.com/seyallius/govmr/main/install.ps1 | iex
 ```
 
-*To install a specific version:*
+_To install a specific version:_
 
 ```powershell
 iex "& { $(irm https://raw.githubusercontent.com/seyallius/govmr/main/install.ps1) } -Version v0.1.8"
@@ -167,15 +167,18 @@ Reload your environment:
 source ~/.bashrc  # or ~/.zshrc
 ```
 
-### Windows (PowerShell / Command Prompt)
+### Windows (PowerShell)
 
-Run the following command in Command Prompt:
+Run the following script in PowerShell to safely add the shim to your permanent User PATH and your current session (avoids the 1024-character truncation bug of `setx`):
 
-```cmd
-setx PATH "%USERPROFILE%\.govmr\shim;%PATH%"
+```powershell
+$s = "$env:USERPROFILE\.govmr\shim"
+$u = [Environment]::GetEnvironmentVariable("PATH", "User")
+if ($u -notlike "*$s*") { [Environment]::SetEnvironmentVariable("PATH", "$u;$s", "User") }
+if ($env:PATH -notlike "*$s*") { $env:PATH += ";$s" }
 ```
 
-Restart your terminal session to apply changes.
+If you use CMD, you can add the path manually via **System Properties → Advanced → Environment Variables**. Restart your terminal session to apply changes.
 
 ---
 

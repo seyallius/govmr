@@ -194,18 +194,17 @@ fn detect_shell_profile() -> String {
     }
 }
 
-/// Windows layout: PowerShell + CMD for current session, safe permanent
-/// PowerShell command, and GUI fallback steps.
+/// Windows layout: A single, robust PowerShell script that safely updates both
+/// the permanent User PATH and the current session, plus a GUI fallback.
 #[cfg(windows)]
 fn draw_setup_content_windows(frame: &mut Frame, inner: Rect, shim_path: &str, theme: &Theme) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(2), // Description
-            Constraint::Length(3), // PowerShell current session
-            Constraint::Length(3), // CMD current session
-            Constraint::Length(3), // Permanent PowerShell command
-            Constraint::Min(1),    // GUI fallback + warning
+            Constraint::Length(6), // PowerShell script block (4 lines + borders)
+            Constraint::Length(2), // CMD note
+            Constraint::Min(1),    // GUI fallback
             Constraint::Length(2), // Press any key
         ])
         .split(inner);
@@ -213,92 +212,68 @@ fn draw_setup_content_windows(frame: &mut Frame, inner: Rect, shim_path: &str, t
     // Description
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            "Add the GoVMR shim directory to your PATH so `go` resolves through GoVMR.",
+            "Run this in PowerShell to safely add the shim permanently and to this session:",
             theme.modal_body(),
         ))),
         chunks[0],
     );
 
-    // PowerShell — current session
-    let ps_cmd = format!("$env:PATH = \"$env:PATH;{}\"", shim_path);
+    // PowerShell script block
+    let ps_script = vec![
+        Line::from(Span::styled(
+            format!("$SHIM_PATH='{}'", shim_path),
+            theme.brand_bold(),
+        )),
+        Line::from(Span::styled(
+            "$USER_PATH=[Environment]::GetEnvironmentVariable('PATH','User')",
+            theme.brand_bold(),
+        )),
+        Line::from(Span::styled(
+            "if($USER_PATH -notlike \"*$SHIM_PATH*\"){[Environment]::SetEnvironmentVariable('PATH',\"$USER_PATH;$SHIM_PATH\",'User')}",
+            theme.brand_bold(),
+        )),
+        // Also add to current session if not already there
+        Line::from(Span::styled(
+            "if($env:PATH -notlike \"*$SHIM_PATH*\"){$env:PATH+=\";$SHIM_PATH\"}",
+            theme.brand_bold(),
+        )),
+    ];
+
     let ps_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(theme.border())
-        .title(Span::styled(" PowerShell — this session ", theme.muted()));
-
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            format!(" {} ", ps_cmd),
-            theme.brand_bold(),
-        )))
-        .block(ps_block),
-        chunks[1],
-    );
-
-    // CMD — current session
-    let cmd_command = format!("set PATH=%PATH%;{}", shim_path);
-    let cmd_block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(theme.border())
-        .title(Span::styled(" CMD — this session ", theme.muted()));
-
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            format!(" {} ", cmd_command),
-            theme.brand_bold(),
-        )))
-        .block(cmd_block),
-        chunks[2],
-    );
-
-    // Permanent — safe PowerShell (no 1024-char truncation)
-    let perm_cmd = format!(
-        "[Environment]::SetEnvironmentVariable(\"PATH\", [Environment]::GetEnvironmentVariable(\"PATH\", \"User\") + \";{}\", \"User\")",
-        shim_path
-    );
-    let perm_block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(theme.border())
         .title(Span::styled(
-            " Make it permanent (PowerShell) ",
+            " PowerShell (Safe & Permanent) ",
             theme.muted(),
         ));
 
+    frame.render_widget(Paragraph::new(ps_script).block(ps_block), chunks[1]);
+
+    // Note about CMD
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            format!(" {} ", perm_cmd),
-            theme.brand_bold(),
-        )))
-        .block(perm_block),
-        chunks[3],
+            "⚠ CMD users: `setx` truncates PATH >1024 chars. Use PowerShell or the GUI fallback.",
+            theme.warning(),
+        ))),
+        chunks[2],
     );
 
-    // Warning + GUI fallback
+    // GUI fallback
     let notes = vec![
         Line::from(Span::styled(
-            " ⚠ Avoid `setx` — it can truncate PATH to 1024 chars.",
-            theme.warning(),
-        )),
-        Line::from(Span::styled(
-            " If the command above fails, open System Properties → Advanced →",
+            " GUI Fallback: System Properties → Advanced → Environment Variables →",
             theme.muted(),
         )),
         Line::from(Span::styled(
-            " Environment Variables → User Path → Edit → New → paste the path.",
-            theme.muted(),
-        )),
-        Line::from(Span::styled(
-            " Restart your terminal after making PATH permanent.",
+            " User Path → Edit → New → paste the shim path. Restart terminal after.",
             theme.muted(),
         )),
     ];
 
     frame.render_widget(
         Paragraph::new(notes).wrap(ratatui::widgets::Wrap { trim: true }),
-        chunks[4],
+        chunks[3],
     );
 
     // Press any key
@@ -309,7 +284,7 @@ fn draw_setup_content_windows(frame: &mut Frame, inner: Rect, shim_path: &str, t
             Span::styled(" to close ", theme.muted()),
         ]))
         .alignment(Alignment::Center),
-        chunks[5],
+        chunks[4],
     );
 }
 
