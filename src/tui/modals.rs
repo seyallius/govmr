@@ -1,8 +1,9 @@
 //! Module modals - Centered modal overlays: theme picker, install progress, and delete confirmation.
 
-use super::widgets::{centered_rect, clear_area, spinner_span};
+use super::widgets::{centered_rect, clear_area, spinner_span, tilde_path};
 use crate::{
     app::{AppState, BusyState, Phase},
+    logging,
     theme::{Theme, ThemeName},
     version::GoVersion,
 };
@@ -298,6 +299,83 @@ pub(crate) fn render_delete_modal(
     frame.render_widget(Paragraph::new(text).alignment(Alignment::Left), inner);
 }
 
+/// Renders the scrollable, color-coded operation-log viewer overlay.
+///
+/// Shows a window of the log pinned to the newest entries by default, with a
+/// footer reporting follow state, the log file path, and the navigation keys.
+pub(crate) fn render_log_viewer(frame: &mut Frame, screen: Rect, state: &AppState, theme: &Theme) {
+    let area = centered_rect(84, 80, screen);
+    clear_area(frame, area, theme);
+
+    let log_path = logging::default_log_path()
+        .map(|p| tilde_path(&p.to_string_lossy()))
+        .unwrap_or_else(|| "~/.govmr/govmr.log".to_string());
+
+    let block = Block::default()
+        .title(Span::styled(" 📜 Operation Log ", theme.title()))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(theme.border())
+        .style(Style::default().bg(theme.bg));
+    frame.render_widget(block, area);
+
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(inner);
+
+    // Compute the visible window using offset-from-bottom scroll semantics.
+    let total = state.log_lines.len();
+    let height = rows[0].height as usize;
+    let end = total.saturating_sub(state.log_scroll);
+    let start = end.saturating_sub(height);
+
+    if total == 0 {
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled("∅ ", theme.muted()),
+                Span::styled(
+                    "No log entries yet — operations will appear here.",
+                    theme.muted(),
+                ),
+            ]))
+            .alignment(Alignment::Center),
+            rows[0],
+        );
+    } else {
+        let lines: Vec<Line> = state.log_lines[start..end]
+            .iter()
+            .map(|l| colorize_log_line(l, theme))
+            .collect();
+        frame.render_widget(Paragraph::new(lines), rows[0]);
+    }
+
+    // Footer: follow state, log path, and key hints.
+    let follow = if state.log_follow {
+        Span::styled("● following", theme.success())
+    } else {
+        Span::styled("○ paused", theme.warning())
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" ", theme.muted()),
+            follow,
+            Span::styled("  ·  ", theme.muted()),
+            Span::styled(log_path, theme.brand_bold()),
+            Span::styled(
+                "  ·  ↑↓ scroll  pgup/pgdn jump  f follow  esc close",
+                theme.muted(),
+            ),
+        ])),
+        rows[1],
+    );
+}
+
 // -------------------------------------- Internal Helpers -------------------------------------- //
 
 /// Short descriptive tagline for each theme.
@@ -312,4 +390,29 @@ fn theme_tagline(name: ThemeName) -> &'static str {
         ThemeName::Light => "bright high contrast",
         ThemeName::Mono => "minimal greyscale",
     }
+}
+
+/// Splits a log line into a dim timestamp and a level-colored remainder.
+///
+/// Expected format: `YYYY-MM-DD HH:MM:SSZ LEVEL message` (a fixed 20-char
+/// ASCII timestamp, a separating space, then the level tag).
+fn colorize_log_line(line: &str, theme: &Theme) -> Line<'static> {
+    let (ts, rest) = if line.len() > 21 {
+        line.split_at(21) // 20-char timestamp + separating space
+    } else {
+        ("", line)
+    };
+    let body_style = if rest.starts_with("ERROR") {
+        theme.error()
+    } else if rest.starts_with("WARN") {
+        theme.warning()
+    } else if rest.starts_with("DEBUG") {
+        theme.muted()
+    } else {
+        theme.modal_body()
+    };
+    Line::from(vec![
+        Span::styled(ts.to_string(), theme.muted()),
+        Span::styled(rest.to_string(), body_style),
+    ])
 }

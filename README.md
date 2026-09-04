@@ -75,9 +75,9 @@ _Automatic logging and persistent settings in ~/.govmr/_
 - **Non-Destructive Version Switching**: Uses executable shims (`~/.govmr/shim`) to instantly switch active versions
   without modifying global binary paths.
 - **Cross-Platform**: Full support for Linux, macOS, and Windows.
-- **Operation log**: every fetch/install/switch/delete/theme change is appended to
-  `~/.govmr/govmr.log` (UTC timestamps, 1 MiB rotation) — your post-mortem trail when the TUI owns the screen and stdout
-  is unusable.
+- **Operation log**: every fetch/install/switch/delete/theme change is appended to `~/.govmr/govmr.log` (UTC timestamps,
+  1 MiB rotation). Press `L` in the TUI to open a live, color-coded log viewer — your post-mortem trail when the TUI
+  owns the screen and stdout is unusable.
 
 ---
 
@@ -205,6 +205,7 @@ govmr
 | `d`            | Delete the selected installed version (asks for confirmation)             |
 | `r`            | Refresh the remote version manifest from `go.dev`                         |
 | `T`            | Open the color-theme picker (arrows to preview, `Enter` to save)          |
+| `L`            | Open the operation-log viewer (scroll, `f` to follow, `Esc` to close)     |
 | `h` / `?`      | Open the PATH-setup help overlay                                          |
 | `q` / `Ctrl+C` | Exit GoVMR                                                                |
 

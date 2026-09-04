@@ -4,9 +4,9 @@ use crate::{
     theme::{Theme, ThemeName},
     version::GoVersion,
 };
+use ratatui::text::Line;
 use ratatui::widgets::ListState;
 use std::time::Instant;
-use ratatui::text::Line;
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// Identifies the currently active tab view in the TUI.
@@ -128,6 +128,16 @@ pub struct AppState {
     /// Result feedback of the permanent PATH fix (`f` in the setup/help overlay),
     /// rendered *inside* the overlay so the user sees exactly what govmr did.
     pub path_fix_notice: Option<Vec<Line<'static>>>,
+    /// Whether the operation-log viewer overlay is displayed.
+    pub show_logs: bool,
+    /// Cached log lines shown by the viewer (refreshed periodically while open).
+    pub log_lines: Vec<String>,
+    /// How far the viewer is scrolled up from the newest entry (0 = pinned to bottom).
+    pub log_scroll: usize,
+    /// Whether the viewer auto-follows the newest log entries.
+    pub log_follow: bool,
+    /// When the log cache was last refreshed (used to throttle re-reads).
+    pub log_refreshed: Option<Instant>,
 }
 impl AppState {
     /// Constructs a fresh state for the supplied version list (used by tests/setup).
@@ -154,6 +164,11 @@ impl AppState {
             theme,
             tick_count: 0,
             path_fix_notice: None,
+            show_logs: false,
+            log_lines: Vec::new(),
+            log_scroll: 0,
+            log_follow: true,
+            log_refreshed: None,
         }
     }
 

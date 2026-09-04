@@ -52,6 +52,19 @@ pub fn default_log_path() -> Option<PathBuf> {
     dirs::home_dir().map(|home| home.join(".govmr").join("govmr.log"))
 }
 
+/// Returns every line currently in the log file, oldest first.
+///
+/// Best-effort: yields an empty list when the log doesn't exist yet or can't
+/// be read, which the TUI log viewer renders as "no entries yet".
+pub fn read_lines() -> Vec<String> {
+    let Some(path) = default_log_path() else {
+        return Vec::new();
+    };
+    fs::read_to_string(&path)
+        .map(|contents| contents.lines().map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
 /// Initializes the global logger at [`default_log_path`].
 ///
 /// Best-effort by design: if the home dir can't be resolved or the file can't be

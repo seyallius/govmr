@@ -1,7 +1,7 @@
 //! Module setup - Interactive onboarding screen and in-app PATH help overlay.
 
-use super::widgets::centered_rect;
-use crate::{manager::GoManager, theme::Theme};
+use super::widgets::{centered_rect, tilde_path};
+use crate::{logging, manager::GoManager, theme::Theme};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
     backend::Backend, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
@@ -206,6 +206,21 @@ fn draw_setup_content(
         );
     }
 
+    // Log location hint
+    let log_path = logging::default_log_path()
+        .map(|p| tilde_path(&p.to_string_lossy()))
+        .unwrap_or_else(|| "~/.govmr/govmr.log".to_string());
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" Logs: ", theme.muted()),
+            Span::styled(log_path, theme.brand_bold()),
+            Span::styled(" — press ", theme.muted()),
+            Span::styled("L", theme.key_hint()),
+            Span::styled(" in the dashboard to view them live.", theme.muted()),
+        ])),
+        chunks[4],
+    );
+
     // Press any key
     frame.render_widget(
         Paragraph::new(Line::from(vec![
@@ -214,7 +229,7 @@ fn draw_setup_content(
             Span::styled(" to close ", theme.muted()),
         ]))
         .alignment(Alignment::Center),
-        chunks[4],
+        chunks[5],
     );
 }
 
@@ -230,6 +245,7 @@ fn create_layout_chunks(inner: Rect) -> Vec<Rect> {
             Constraint::Length(3), // Current-session one-liner
             Constraint::Length(1), // Spacer
             Constraint::Min(4),    // Notice or Press f message
+            Constraint::Length(1), // Log location hint
             Constraint::Length(2), // Press any key
         ])
         .split(inner)

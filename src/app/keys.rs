@@ -53,15 +53,21 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
                     Ok(lines) => {
                         // lines is Vec<String> - we need to iterate over it
                         let styled_lines: Vec<Line<'static>> = lines
-                            .iter()  // Use iter() instead of into_iter()
+                            .iter() // Use iter() instead of into_iter()
                             .enumerate()
                             .map(|(i, line)| {
                                 if i == 0 {
                                     // First line: success message
-                                    Line::from(Span::styled(line.clone(), app.state.theme.success()))
+                                    Line::from(Span::styled(
+                                        line.clone(),
+                                        app.state.theme.success(),
+                                    ))
                                 } else if i == 1 && line.starts_with("    ") {
                                     // Command line: indent preserved, brand bold
-                                    Line::from(Span::styled(line.clone(), app.state.theme.brand_bold()))
+                                    Line::from(Span::styled(
+                                        line.clone(),
+                                        app.state.theme.brand_bold(),
+                                    ))
                                 } else {
                                     // Other lines: muted but visible
                                     Line::from(Span::styled(line.clone(), app.state.theme.muted()))
@@ -76,10 +82,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
                                 "Failed to fix PATH:".to_string(),
                                 app.state.theme.error(),
                             )),
-                            Line::from(Span::styled(
-                                format!("  {}", e),
-                                app.state.theme.muted(),
-                            )),
+                            Line::from(Span::styled(format!("  {}", e), app.state.theme.muted())),
                         ]);
                     }
                 }
@@ -90,6 +93,45 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
                 app.state.path_fix_notice = None;
                 KeyOutcome::Continue
             }
+        };
+    }
+
+    // Log viewer: scroll, toggle follow, or close. Captures keys while open.
+    if app.state.show_logs {
+        return match key.code {
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('L') => {
+                app.close_logs();
+                KeyOutcome::Continue
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.scroll_logs(1); // up = older history
+                KeyOutcome::Continue
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.scroll_logs(-1); // down = newer entries
+                KeyOutcome::Continue
+            }
+            KeyCode::PageUp => {
+                app.scroll_logs(15);
+                KeyOutcome::Continue
+            }
+            KeyCode::PageDown => {
+                app.scroll_logs(-15);
+                KeyOutcome::Continue
+            }
+            KeyCode::Home | KeyCode::Char('g') => {
+                app.scroll_logs(i64::MAX); // jump to oldest
+                KeyOutcome::Continue
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                app.scroll_logs(i64::MIN); // jump to newest
+                KeyOutcome::Continue
+            }
+            KeyCode::Char('f') => {
+                app.toggle_log_follow();
+                KeyOutcome::Continue
+            }
+            _ => KeyOutcome::Continue,
         };
     }
 
@@ -170,6 +212,9 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
         }
         KeyCode::Char('T') => {
             app.open_theme_picker();
+        }
+        KeyCode::Char('L') => {
+            app.open_logs();
         }
         KeyCode::Char('h') | KeyCode::Char('?') => {
             app.state.show_help = true;

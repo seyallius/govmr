@@ -11,12 +11,16 @@ pub use keys::{handle_key, KeyOutcome};
 pub use state::{visible_indices, ActiveTab, AppState, BusyState, MsgKind, Phase, StatusMessage};
 
 use crate::{
+    logging,
     manager::{GoManager, InstallProgress},
     theme::{Theme, ThemeName},
     version::GoVersion,
 };
 use ratatui::widgets::ListState;
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
@@ -61,6 +65,11 @@ impl App {
                 theme: Theme::for_name(current_theme),
                 tick_count: 0,
                 path_fix_notice: None,
+                show_logs: false,
+                log_lines: Vec::new(),
+                log_scroll: 0,
+                log_follow: true,
+                log_refreshed: None,
             },
             manager,
         }
@@ -115,6 +124,66 @@ impl App {
     pub fn switch_tab(&mut self) {
         self.state.active_tab = self.state.active_tab.toggle();
         self.state.list_state.select(Some(0));
+    }
+
+    /// Opens the log viewer, loading the current log contents and pinning to
+    /// the newest entry.
+    pub fn open_logs(&mut self) {
+        self.state.show_logs = true;
+        self.state.log_follow = true;
+        self.state.log_scroll = 0;
+        self.refresh_logs();
+    }
+
+    /// Closes the log viewer.
+    pub fn close_logs(&mut self) {
+        self.state.show_logs = false;
+    }
+
+    /// Re-reads the log file into the viewer cache. When following, stays
+    /// pinned to the newest entry; otherwise preserves the scroll position.
+    pub fn refresh_logs(&mut self) {
+        self.state.log_lines = logging::read_lines();
+        self.state.log_refreshed = Some(Instant::now());
+        let max = self.state.log_lines.len().saturating_sub(1);
+        if self.state.log_follow {
+            self.state.log_scroll = 0;
+        } else if self.state.log_scroll > max {
+            self.state.log_scroll = max;
+        }
+    }
+
+    /// Re-reads the log cache if the viewer is open and the throttle window
+    /// has elapsed. Cheap no-op otherwise, so it is safe to call every tick.
+    pub fn refresh_logs_if_open(&mut self) {
+        if !self.state.show_logs {
+            return;
+        }
+        let stale = self
+            .state
+            .log_refreshed
+            .map_or(true, |t| t.elapsed() >= Duration::from_millis(500));
+        if stale {
+            self.refresh_logs();
+        }
+    }
+
+    /// Scrolls the log viewer by `delta` lines: positive moves up into older
+    /// history, negative moves down toward newer entries.
+    pub fn scroll_logs(&mut self, delta: i64) {
+        let max = self.state.log_lines.len().saturating_sub(1);
+        let next = (self.state.log_scroll as i64 + delta).clamp(0, max as i64) as usize;
+        self.state.log_scroll = next;
+        // Following only makes sense while pinned to the newest entry.
+        self.state.log_follow = next == 0;
+    }
+
+    /// Toggles auto-follow; re-enabling snaps back to the newest entry.
+    pub fn toggle_log_follow(&mut self) {
+        self.state.log_follow = !self.state.log_follow;
+        if self.state.log_follow {
+            self.state.log_scroll = 0;
+        }
     }
 
     /// Opens the theme picker, landing on the currently active theme.

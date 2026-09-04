@@ -1,7 +1,7 @@
 //! Module dashboard - Main dashboard layout composition, chrome, and version list rendering.
 
 use super::{
-    modals::{render_delete_modal, render_install_modal, render_theme_picker},
+    modals::{render_delete_modal, render_install_modal, render_log_viewer, render_theme_picker},
     setup::draw_setup_modal,
     status::render_status_bar,
     widgets::{right_pad, shorten_path, tilde_path},
@@ -144,6 +144,10 @@ pub fn render_overlays(frame: &mut Frame, state: &AppState) {
 
     if state.show_theme_picker {
         render_theme_picker(frame, size, state, &theme);
+    }
+
+    if state.show_logs {
+        render_log_viewer(frame, size, state, &theme);
     }
 }
 
@@ -399,6 +403,7 @@ fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme)
         spans.extend(hint("u", "use"));
         spans.extend(hint("d", "delete"));
         spans.extend(hint("T", "theme"));
+        spans.extend(hint("L", "logs"));
         spans.extend(hint("r", "refresh"));
         spans.extend(hint("q", "quit"));
     }

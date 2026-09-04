@@ -110,6 +110,9 @@ async fn run_tui(
         })?;
         app::handle_actions(&mut action_rx, &mut app, &manager, &action_tx).await?;
 
+        // Keep the log viewer's contents fresh while it is open (throttled).
+        app.refresh_logs_if_open();
+
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 if let app::KeyOutcome::Quit = app::handle_key(key, &mut app, &action_tx) {
