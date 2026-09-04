@@ -133,7 +133,13 @@ pub fn render_overlays(frame: &mut Frame, state: &AppState) {
     }
 
     if state.show_help {
-        draw_setup_modal(frame, size, &state.shim_path, &theme);
+        draw_setup_modal(
+            frame,
+            size,
+            &state.shim_path,
+            &theme,
+            state.path_fix_notice.as_deref(),
+        );
     }
 
     if state.show_theme_picker {

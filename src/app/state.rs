@@ -6,7 +6,7 @@ use crate::{
 };
 use ratatui::widgets::ListState;
 use std::time::Instant;
-
+use ratatui::text::Line;
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// Identifies the currently active tab view in the TUI.
@@ -125,6 +125,9 @@ pub struct AppState {
     pub theme: Theme,
     /// Monotonic render counter used to drive spinner animations.
     pub tick_count: u64,
+    /// Result feedback of the permanent PATH fix (`f` in the setup/help overlay),
+    /// rendered *inside* the overlay so the user sees exactly what govmr did.
+    pub path_fix_notice: Option<Vec<Line<'static>>>,
 }
 impl AppState {
     /// Constructs a fresh state for the supplied version list (used by tests/setup).
@@ -150,6 +153,7 @@ impl AppState {
             theme_picker_index: 0,
             theme,
             tick_count: 0,
+            path_fix_notice: None,
         }
     }
 

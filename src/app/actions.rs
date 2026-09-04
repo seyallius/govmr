@@ -10,6 +10,7 @@ use crate::{
     logging,
     manager::GoManager,
 };
+use ratatui::text::{Line, Span};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -134,14 +135,27 @@ pub async fn handle_actions(
             }
             Action::FixPath => {
                 // Runs the platform's permanent PATH snippet in a hidden child
-                // process; fast and local, so it runs inline.
+                // process; fast and local, so it runs inline. The summary is
+                // shown inside the still-open help overlay, not on the dashboard
+                // status bar.
                 match manager.fix_path_permanently() {
-                    Ok(()) => {
+                    Ok(lines) => {
+                        // lines is Vec<String> now
+                        let styled_lines: Vec<Line<'static>> = lines
+                            .into_iter()
+                            .enumerate()
+                            .map(|(i, line)| {
+                                if i == 0 {
+                                    Line::from(Span::styled(line, app.state.theme.success()))
+                                } else if i == 1 && line.starts_with("    ") {
+                                    Line::from(Span::styled(line, app.state.theme.brand_bold()))
+                                } else {
+                                    Line::from(Span::styled(line, app.state.theme.muted()))
+                                }
+                            })
+                            .collect();
+                        app.state.path_fix_notice = Some(styled_lines);
                         app.state.is_shim_in_path = manager.get_shim_manager().is_in_path();
-                        app.set_status(
-                            "PATH fixed permanently! Open a NEW terminal for `go` to resolve.",
-                            MsgKind::Success,
-                        );
                     }
                     Err(e) => {
                         logging::error(&format!("fix-path failed: {e}"));

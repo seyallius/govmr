@@ -22,7 +22,6 @@ use std::{
     sync::Mutex,
     time::Duration,
 };
-
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// Primary orchestrator managing installed toolchains, downloads, and version switching.
@@ -212,19 +211,20 @@ impl GoManager {
     }
 
     /// Applies the permanent PATH fix by running the platform snippet in a
-    /// hidden child process.
+    /// hidden child process and returns a human-readable summary of
+    /// exactly what was done, so the UI can reassure the user.
     ///
     /// * **Windows**: runs an idempotent PowerShell snippet that appends the
     ///   shim dir to the *User* PATH (no `setx`, so no 1024-char truncation).
     ///   Only takes effect in *new* terminal sessions (Windows limitation).
     /// * **Unix**: appends an `export PATH=...` line to the detected shell
     ///   profile (`~/.zshrc` / `~/.config/fish/config.fish` / `~/.bashrc`),
-    ///   guarded by a marker comment so repeated presses never duplicate it.
+    ///   guarded by a marker comment so repeats never duplicate it.
     ///
     /// # Errors
-    /// Returns [`GovmError`] if the home directory cannot be resolved, the
-    /// profile cannot be written, or the child process fails to spawn/run.
-    pub fn fix_path_permanently(&self) -> Result<(), GovmError> {
+    /// Returns [`GovmError`] if the home dir cannot be resolved, the profile
+    /// cannot be written, or the child process fails to spawn/run.
+    pub fn fix_path_permanently(&self) -> Result<Vec<String>, GovmError> {
         let shim_dir = self.shim_mgr.get_shim_dir();
         let shim = shim_dir.to_string_lossy().to_string();
 
@@ -235,7 +235,6 @@ impl GoManager {
             let script = format!(
                 "$p=[Environment]::GetEnvironmentVariable('PATH','User');\
                  if($p -notlike \"*{shim}*\"){{[Environment]::SetEnvironmentVariable('PATH',\"$p;{shim}\",'User')}}",
-                shim = shim
             );
             let status = std::process::Command::new("powershell")
                 .args([
@@ -256,7 +255,11 @@ impl GoManager {
             }
 
             logging::info("fix-path: Windows User PATH updated (new terminals only)");
-            Ok(())
+            Ok(vec![
+                "Done — ran in a hidden PowerShell window:".to_string(),
+                format!("    {script}"),
+                "Open a NEW terminal for `go` to resolve.".to_string(),
+            ])
         }
 
         #[cfg(unix)]
@@ -273,21 +276,33 @@ impl GoManager {
             // Idempotency guard: never append the same line twice.
             if existing.lines().any(|l| l.trim_start().starts_with(marker)) {
                 logging::info("fix-path: profile already patched, nothing to do");
-                return Ok(());
+                return Ok(vec![
+                    format!(
+                        "Already done — {} already contains the govmr export line.",
+                        profile.display()
+                    ),
+                    "Open a NEW terminal (or source it) for `go` to resolve.".to_string(),
+                ]);
             }
 
+            let source_path = format!("export PATH=\"{}:$PATH\"", shim);
             let mut file = fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(&profile)?;
+            writeln!(file, "")?;
             writeln!(file, "{}", marker)?;
-            writeln!(file, "export PATH=\"{}:$PATH\"", shim)?;
+            writeln!(file, "{source_path}")?;
 
             logging::info(&format!(
                 "fix-path: appended export line to {}",
                 profile.display()
             ));
-            Ok(())
+            Ok(vec![
+                format!("Done — appended to {}:", profile.display()),
+                format!("    {source_path}"),
+                "Open a NEW terminal (or source it) for `go` to resolve.".to_string(),
+            ])
         }
     }
 }

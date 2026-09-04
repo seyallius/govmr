@@ -10,6 +10,7 @@ use crate::{
     theme::{Theme, ThemeName},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::text::{Line, Span};
 use tokio::sync::mpsc::UnboundedSender;
 
 // ------------------------------------------ Types & Impls ------------------------------------- //
@@ -42,16 +43,51 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
     }
 
     // Help overlay captures every OTHER key until dismissed, EXCEPT 'q' which
-    // quits the app and 'f' which applies the permanent PATH fix.
+    // quits the app and 'f' which applies the permanent PATH fix. The overlay
+    // stays open on 'f' so the result notice is shown inside it.
     if app.state.show_help {
         return match key.code {
             KeyCode::Char('q') => KeyOutcome::Quit,
             KeyCode::Char('f') => {
-                let _ = action_tx.send(Action::FixPath);
-                KeyOutcome::Continue
+                match app.manager.fix_path_permanently() {
+                    Ok(lines) => {
+                        // lines is Vec<String> - we need to iterate over it
+                        let styled_lines: Vec<Line<'static>> = lines
+                            .iter()  // Use iter() instead of into_iter()
+                            .enumerate()
+                            .map(|(i, line)| {
+                                if i == 0 {
+                                    // First line: success message
+                                    Line::from(Span::styled(line.clone(), app.state.theme.success()))
+                                } else if i == 1 && line.starts_with("    ") {
+                                    // Command line: indent preserved, brand bold
+                                    Line::from(Span::styled(line.clone(), app.state.theme.brand_bold()))
+                                } else {
+                                    // Other lines: muted but visible
+                                    Line::from(Span::styled(line.clone(), app.state.theme.muted()))
+                                }
+                            })
+                            .collect();
+                        app.state.path_fix_notice = Some(styled_lines);
+                    }
+                    Err(e) => {
+                        app.state.path_fix_notice = Some(vec![
+                            Line::from(Span::styled(
+                                "Failed to fix PATH:".to_string(),
+                                app.state.theme.error(),
+                            )),
+                            Line::from(Span::styled(
+                                format!("  {}", e),
+                                app.state.theme.muted(),
+                            )),
+                        ]);
+                    }
+                }
+                return KeyOutcome::Continue;
             }
             _ => {
                 app.state.show_help = false;
+                app.state.path_fix_notice = None;
                 KeyOutcome::Continue
             }
         };

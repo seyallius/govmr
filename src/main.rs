@@ -85,9 +85,14 @@ async fn run_tui(
     let shim_in_path = manager.get_shim_manager().is_in_path();
     let initial_theme = manager.theme();
 
-    let should_continue =
-        tui::setup::run_setup_guide_if_needed(terminal, &shim_path, shim_in_path, &initial_theme)
-            .await?;
+    let should_continue = tui::setup::run_setup_guide_if_needed(
+        terminal,
+        &shim_path,
+        shim_in_path,
+        &initial_theme,
+        &manager,
+    )
+    .await?;
 
     if !should_continue {
         return Ok(());

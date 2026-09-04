@@ -60,6 +60,7 @@ impl App {
                 theme_picker_index,
                 theme: Theme::for_name(current_theme),
                 tick_count: 0,
+                path_fix_notice: None,
             },
             manager,
         }
