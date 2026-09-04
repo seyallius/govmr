@@ -26,24 +26,24 @@ Quick preview of key features:
 
 _Browsing available versions_
 
-<a href="docs/assets/dashboard_c.gif">
-  <img src="docs/assets/dashboard_c.gif" alt="GoVMR TUI Demo" width="800"/>
+<a href="https://github.com/seyallius/govmr/blob/main/docs/assets/dashboard_c.gif">
+  <img src="https://github.com/seyallius/govmr/blob/main/docs/assets/dashboard_c.gif" alt="GoVMR TUI Demo" width="800"/>
 </a>
 
 ### Color Theme Picker
 
 _Live preview of all 8 themes - arrows to browse, Enter to apply_
 
-<a href="docs/assets/theme_c.gif">
-<img src="docs/assets/theme_c.gif" alt="Theme picker with live preview" width="800"/>
+<a href="https://github.com/seyallius/govmr/blob/main/docs/assets/theme_c.gif">
+<img src="https://github.com/seyallius/govmr/blob/main/docs/assets/theme_c.gif" alt="Theme picker with live preview" width="800"/>
 </a>
 
 ### Logs and Config
 
 _Automatic logging and persistent settings in ~/.govmr/_
 
-<a href="docs/assets/logsandconfig_c.gif">
-<img src="docs/assets/logsandconfig_c.gif" alt="Logs and Config" width="800"/>
+<a href="https://github.com/seyallius/govmr/blob/main/docs/assets/logsandconfig_c.gif">
+<img src="https://github.com/seyallius/govmr/blob/main/docs/assets/logsandconfig_c.gif" alt="Logs and Config" width="800"/>
 </a>
 
 <sub>⚡ All demos are under 500KB for fast loading</sub>
