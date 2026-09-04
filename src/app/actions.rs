@@ -86,10 +86,36 @@ pub async fn handle_actions(
             }
             Action::InstallDone(v) => {
                 app.state.busy = None;
-                app.set_status(
-                    format!("Go {} installed successfully", v.raw_version),
-                    MsgKind::Success,
-                );
+
+                // AUTO-ACTIVATE: Switch to the newly installed version immediately.
+                let activated = match manager.switch_version(&v) {
+                    Ok(in_path) => {
+                        app.state.is_shim_in_path = in_path;
+                        for ver in &mut app.state.versions {
+                            ver.active = ver.raw_version == v.raw_version;
+                        }
+                        true
+                    }
+                    Err(e) => {
+                        logging::error(&format!("auto-activate failed after install: {e}"));
+                        false
+                    }
+                };
+
+                let msg = if activated {
+                    format!(
+                        "Go {} installed & activated ✓ (archive cleaned to save space)",
+                        v.raw_version
+                    )
+                } else {
+                    format!(
+                        "Go {} installed ✓ — press u to activate (archive cleaned to save space)",
+                        v.raw_version
+                    )
+                };
+                app.set_status(msg, MsgKind::Success);
+
+                // Refresh to pick up any manifest changes or updated installed flags
                 let _ = action_tx.send(Action::Refresh);
             }
             Action::InstallFailed(err) => {

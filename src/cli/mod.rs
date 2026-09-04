@@ -111,9 +111,13 @@ pub async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
 
             progress.finish();
             println!(
-                "{} Successfully installed {}",
+                "{} Successfully installed & activated {}",
                 paint(GREEN, "✅"),
                 paint(CYAN, &format!("Go {}", target.raw_version))
+            );
+            println!(
+                "  {} Archive cleaned to save space. Shim generated at ~/.govmr/shim/",
+                paint(GREY, "ℹ️")
             );
         }
         Some(Commands::Use { version }) => {
