@@ -96,45 +96,6 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
         };
     }
 
-    // Log viewer: scroll, toggle follow, or close. Captures keys while open.
-    if app.state.show_logs {
-        return match key.code {
-            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('L') => {
-                app.close_logs();
-                KeyOutcome::Continue
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                app.scroll_logs(1); // up = older history
-                KeyOutcome::Continue
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                app.scroll_logs(-1); // down = newer entries
-                KeyOutcome::Continue
-            }
-            KeyCode::PageUp => {
-                app.scroll_logs(15);
-                KeyOutcome::Continue
-            }
-            KeyCode::PageDown => {
-                app.scroll_logs(-15);
-                KeyOutcome::Continue
-            }
-            KeyCode::Home | KeyCode::Char('g') => {
-                app.scroll_logs(i64::MAX); // jump to oldest
-                KeyOutcome::Continue
-            }
-            KeyCode::End | KeyCode::Char('G') => {
-                app.scroll_logs(i64::MIN); // jump to newest
-                KeyOutcome::Continue
-            }
-            KeyCode::Char('f') => {
-                app.toggle_log_follow();
-                KeyOutcome::Continue
-            }
-            _ => KeyOutcome::Continue,
-        };
-    }
-
     // Theme picker: navigate with arrows/vim keys, Enter saves,
     // Esc/q cancels and restores the persisted theme.
     if app.state.show_theme_picker {
@@ -200,6 +161,64 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
             _ => {}
         }
         return KeyOutcome::Continue;
+    }
+
+    // Docked log panel: `L` closes, `` ` `` toggles focus. While focused, the
+    // panel swallows navigation keys so they scroll logs instead of the list.
+    if app.state.show_logs {
+        match key.code {
+            KeyCode::Char('L') => {
+                app.close_logs();
+                return KeyOutcome::Continue;
+            }
+            KeyCode::Char('`') => {
+                app.state.log_focus = !app.state.log_focus;
+                return KeyOutcome::Continue;
+            }
+            _ => {}
+        }
+        if app.state.log_focus {
+            return match key.code {
+                KeyCode::Esc => {
+                    app.state.log_focus = false;
+                    KeyOutcome::Continue
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    app.scroll_logs(1);
+                    KeyOutcome::Continue
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    app.scroll_logs(-1);
+                    KeyOutcome::Continue
+                }
+                KeyCode::PageUp => {
+                    app.scroll_logs(15);
+                    KeyOutcome::Continue
+                }
+                KeyCode::PageDown => {
+                    app.scroll_logs(-15);
+                    KeyOutcome::Continue
+                }
+                KeyCode::Home | KeyCode::Char('g') => {
+                    app.scroll_logs(i64::MAX);
+                    KeyOutcome::Continue
+                }
+                KeyCode::End | KeyCode::Char('G') => {
+                    app.scroll_logs(i64::MIN);
+                    KeyOutcome::Continue
+                }
+                KeyCode::Char('f') => {
+                    app.toggle_log_follow();
+                    KeyOutcome::Continue
+                }
+                KeyCode::Char('w') => {
+                    app.toggle_log_wrap();
+                    KeyOutcome::Continue
+                }
+                KeyCode::Char('q') => KeyOutcome::Quit,
+                _ => KeyOutcome::Continue,
+            };
+        }
     }
 
     match key.code {

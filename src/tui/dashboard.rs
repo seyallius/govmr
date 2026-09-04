@@ -1,7 +1,8 @@
 //! Module dashboard - Main dashboard layout composition, chrome, and version list rendering.
 
 use super::{
-    modals::{render_delete_modal, render_install_modal, render_log_viewer, render_theme_picker},
+    logs::render_log_panel,
+    modals::{render_delete_modal, render_install_modal, render_theme_picker},
     setup::draw_setup_modal,
     status::render_status_bar,
     widgets::{right_pad, shorten_path, tilde_path},
@@ -70,6 +71,18 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         vertical: 1,
     });
 
+    // Dock the IDE-style log panel to the bottom when open; the dashboard
+    // shrinks to make room but stays fully interactive.
+    let (dash_inner, log_area) = if state.show_logs {
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(5), Constraint::Percentage(38)])
+            .split(inner);
+        (split[0], Some(split[1]))
+    } else {
+        (inner, None)
+    };
+
     // ---- Vertical layout --------------------------------------------------------------------- //
     let show_warning = !state.is_shim_in_path;
     let mut constraints = Vec::with_capacity(5);
@@ -84,7 +97,7 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(constraints)
-        .split(inner);
+        .split(dash_inner);
 
     // A centered modal covers the chrome areas; hide the pieces that would
     // otherwise bleed through the modal edges. The theme picker is deliberately
@@ -115,6 +128,10 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         render_status_bar(frame, status_chunk, state, &theme);
         render_footer(frame, footer_chunk, state, &theme);
     }
+
+    if let Some(area) = log_area {
+        render_log_panel(frame, area, state, &theme);
+    }
 }
 
 /// Draws top-level modal overlays (theme picker, install progress, delete, help).
@@ -144,10 +161,6 @@ pub fn render_overlays(frame: &mut Frame, state: &AppState) {
 
     if state.show_theme_picker {
         render_theme_picker(frame, size, state, &theme);
-    }
-
-    if state.show_logs {
-        render_log_viewer(frame, size, state, &theme);
     }
 }
 
@@ -404,6 +417,9 @@ fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme)
         spans.extend(hint("d", "delete"));
         spans.extend(hint("T", "theme"));
         spans.extend(hint("L", "logs"));
+        if state.show_logs {
+            spans.extend(hint("`", "focus"));
+        }
         spans.extend(hint("r", "refresh"));
         spans.extend(hint("q", "quit"));
     }

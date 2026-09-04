@@ -70,6 +70,8 @@ impl App {
                 log_scroll: 0,
                 log_follow: true,
                 log_refreshed: None,
+                log_focus: false,
+                log_wrap: false,
             },
             manager,
         }
@@ -126,18 +128,25 @@ impl App {
         self.state.list_state.select(Some(0));
     }
 
-    /// Opens the log viewer, loading the current log contents and pinning to
-    /// the newest entry.
+    /// Opens the docked log panel *without* stealing keyboard focus, so the
+    /// dashboard stays fully usable while logs tail live.
     pub fn open_logs(&mut self) {
         self.state.show_logs = true;
+        self.state.log_focus = false;
         self.state.log_follow = true;
         self.state.log_scroll = 0;
         self.refresh_logs();
     }
 
-    /// Closes the log viewer.
+    /// Closes the docked log panel and drops focus back to the dashboard.
     pub fn close_logs(&mut self) {
         self.state.show_logs = false;
+        self.state.log_focus = false;
+    }
+
+    /// Toggles word wrapping of long log lines (URLs, stack traces, …).
+    pub fn toggle_log_wrap(&mut self) {
+        self.state.log_wrap = !self.state.log_wrap;
     }
 
     /// Re-reads the log file into the viewer cache. When following, stays

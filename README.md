@@ -205,7 +205,8 @@ govmr
 | `d`            | Delete the selected installed version (asks for confirmation)             |
 | `r`            | Refresh the remote version manifest from `go.dev`                         |
 | `T`            | Open the color-theme picker (arrows to preview, `Enter` to save)          |
-| `L`            | Open the operation-log viewer (scroll, `f` to follow, `Esc` to close)     |
+| `L`            | Toggle the docked operation-log panel (bottom, IDE-style)                 |
+| `` ` ``        | Focus/unfocus the log panel (`j/k` scroll, `f` follow, `w` wrap)          |
 | `h` / `?`      | Open the PATH-setup help overlay                                          |
 | `q` / `Ctrl+C` | Exit GoVMR                                                                |
 

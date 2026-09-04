@@ -138,6 +138,10 @@ pub struct AppState {
     pub log_follow: bool,
     /// When the log cache was last refreshed (used to throttle re-reads).
     pub log_refreshed: Option<Instant>,
+    /// Whether keyboard focus is currently on the docked log panel.
+    pub log_focus: bool,
+    /// Whether long log lines wrap instead of clipping at the panel edge.
+    pub log_wrap: bool,
 }
 impl AppState {
     /// Constructs a fresh state for the supplied version list (used by tests/setup).
@@ -169,6 +173,8 @@ impl AppState {
             log_scroll: 0,
             log_follow: true,
             log_refreshed: None,
+            log_focus: false,
+            log_wrap: false,
         }
     }
 
