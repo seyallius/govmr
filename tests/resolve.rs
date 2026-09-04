@@ -1,6 +1,6 @@
 //! Tests for semver-aware version query resolution (the prefix-matching bug).
 
-use govmr::version::{resolve_version, version_matches, GoVersion};
+use govmr::version::{GoVersion, resolve_version, version_matches};
 
 fn gv(raw: &str, stable: bool) -> GoVersion {
     GoVersion {

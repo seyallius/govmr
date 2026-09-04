@@ -7,7 +7,7 @@ use govmr::{
     tui::dashboard::{render, render_overlays},
     version::GoVersion,
 };
-use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
+use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
 
 fn make_terminal() -> Terminal<TestBackend> {
     Terminal::new(TestBackend::new(100, 30)).unwrap()

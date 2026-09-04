@@ -7,8 +7,8 @@ mod state;
 
 pub use action::Action;
 pub use actions::handle_actions;
-pub use keys::{handle_key, KeyOutcome};
-pub use state::{visible_indices, ActiveTab, AppState, BusyState, MsgKind, Phase, StatusMessage};
+pub use keys::{KeyOutcome, handle_key};
+pub use state::{ActiveTab, AppState, BusyState, MsgKind, Phase, StatusMessage, visible_indices};
 
 use crate::{
     logging,
@@ -72,6 +72,7 @@ impl App {
                 log_refreshed: None,
                 log_focus: false,
                 log_wrap: false,
+                cancel_install: None,
             },
             manager,
         }

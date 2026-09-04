@@ -49,4 +49,7 @@ pub enum GovmError {
         /// Final URL after following redirects.
         url: String,
     },
+    /// Emitted when the user cancels an ongoing operation (e.g. installation).
+    #[error("Operation cancelled by user")]
+    Cancelled,
 }

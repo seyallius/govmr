@@ -7,6 +7,7 @@
 
 use crate::{
     app::{Action, App, MsgKind},
+    logging,
     theme::{Theme, ThemeName},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -161,6 +162,21 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
             _ => {}
         }
         return KeyOutcome::Continue;
+    }
+
+    // Intercept Esc/c to cancel ongoing installation
+    if app.state.cancel_install.is_some() {
+        logging::debug(&format!(
+            "Key pressed during install: {:?}, cancel_install is Some",
+            key.code
+        ));
+        if key.code == KeyCode::Esc || key.code == KeyCode::Char('c') {
+            if let Some(tx) = app.state.cancel_install.take() {
+                let _ = tx.send(true);
+                app.set_status("Cancelling installation...", MsgKind::Info);
+            }
+            return KeyOutcome::Continue;
+        }
     }
 
     // Docked log panel: `L` closes, `` ` `` toggles focus. While focused, the

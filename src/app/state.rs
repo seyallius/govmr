@@ -4,9 +4,9 @@ use crate::{
     theme::{Theme, ThemeName},
     version::GoVersion,
 };
-use ratatui::text::Line;
-use ratatui::widgets::ListState;
+use ratatui::{text::Line, widgets::ListState};
 use std::time::Instant;
+
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// Identifies the currently active tab view in the TUI.
@@ -142,6 +142,8 @@ pub struct AppState {
     pub log_focus: bool,
     /// Whether long log lines wrap instead of clipping at the panel edge.
     pub log_wrap: bool,
+    /// Sender used to signal cancellation of an ongoing installation.
+    pub cancel_install: Option<tokio::sync::watch::Sender<bool>>,
 }
 impl AppState {
     /// Constructs a fresh state for the supplied version list (used by tests/setup).
@@ -175,6 +177,7 @@ impl AppState {
             log_refreshed: None,
             log_focus: false,
             log_wrap: false,
+            cancel_install: None,
         }
     }
 

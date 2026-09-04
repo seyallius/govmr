@@ -60,17 +60,33 @@ pub async fn handle_actions(
                     started_at: std::time::Instant::now(),
                 });
                 app.state.status_message = None;
+
                 let mgr = manager.clone();
                 let progress_tx = action_tx.clone();
                 let done_tx = action_tx.clone();
+                let (cancel_tx, mut cancel_rx) = tokio::sync::watch::channel(false);
+                app.state.cancel_install = Some(cancel_tx);
 
                 tokio::spawn(async move {
                     let progress_tx2 = progress_tx.clone();
-                    let result = mgr
-                        .download_and_install(&v, move |p| {
+
+                    let result = tokio::select! {
+                        res = mgr.download_and_install(&v, move |p| {
                             let _ = progress_tx2.send(Action::InstallProgress(p));
-                        })
-                        .await;
+                        }) => res,
+                        _ = async {
+                            // Wait for the cancel signal to become true
+                            while !*cancel_rx.borrow() {
+                                if cancel_rx.changed().await.is_err() {
+                                    break; // Sender dropped
+                                }
+                            }
+                        } => {
+                            logging::info("install cancelled by user (task aborted)");
+                            Err(crate::errors::GovmError::Cancelled)
+                        }
+                    };
+
                     match result {
                         Ok(_) => {
                             let _ = done_tx.send(Action::InstallDone(v));
@@ -86,6 +102,7 @@ pub async fn handle_actions(
             }
             Action::InstallDone(v) => {
                 app.state.busy = None;
+                app.state.cancel_install = None;
 
                 // AUTO-ACTIVATE: Switch to the newly installed version immediately.
                 let activated = match manager.switch_version(&v) {
@@ -119,9 +136,14 @@ pub async fn handle_actions(
                 let _ = action_tx.send(Action::Refresh);
             }
             Action::InstallFailed(err) => {
-                logging::error(&format!("install failed: {err}"));
                 app.state.busy = None;
-                app.set_status(format!("Installation failed: {}", err), MsgKind::Error);
+                app.state.cancel_install = None;
+                if err.contains("cancelled") {
+                    app.set_status("Installation cancelled", MsgKind::Info);
+                } else {
+                    logging::error(&format!("install failed: {err}"));
+                    app.set_status(format!("Installation failed: {}", err), MsgKind::Error);
+                }
             }
             Action::Use(v) => {
                 app.state.busy = Some(BusyState::Switching(v.raw_version.clone()));

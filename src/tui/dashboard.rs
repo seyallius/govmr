@@ -408,6 +408,9 @@ fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme)
     if state.filter_mode {
         spans.extend(hint("enter", "apply"));
         spans.extend(hint("esc", "clear"));
+    } else if state.cancel_install.is_some() {
+        spans.extend(hint("esc", "cancel install"));
+        spans.extend(hint("q", "quit"));
     } else {
         spans.extend(hint("↑↓/jk", "move"));
         spans.extend(hint("tab", "switch"));

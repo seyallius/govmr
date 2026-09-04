@@ -117,6 +117,7 @@ impl GoManager {
                 }
             }
         }
+
         file.flush().await?;
         logging::info(&format!(
             "download complete: go{} {} bytes -> {}",
