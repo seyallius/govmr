@@ -4,11 +4,12 @@
 use super::widgets::tilde_path;
 use crate::{app::AppState, logging, theme::Theme};
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
+    style::Modifier,
     style::Style,
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
+    Frame,
 };
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
@@ -20,9 +21,9 @@ use ratatui::{
 pub(crate) fn render_log_panel(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
     let focused = state.log_focus;
     let border_style = if focused {
-        theme.brand_bold()
+        theme.border().add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(theme.brand_dark)
+        theme.dim_border()
     };
 
     let mut title = vec![

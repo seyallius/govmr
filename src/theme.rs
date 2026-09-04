@@ -107,6 +107,9 @@ pub struct Theme {
     pub fg: Color,
     /// Screen background fill.
     pub bg: Color,
+    /// Quiet chrome color (unfocused panel borders, dividers, tab underline).
+    /// Sits between `bg` and `gray` so inactive chrome recedes without vanishing.
+    pub dim: Color,
 }
 impl Theme {
     /// Builds the palette for the named scheme.
@@ -122,6 +125,7 @@ impl Theme {
                 grey: Color::Rgb(105, 115, 134),
                 fg: Color::Rgb(224, 232, 240),
                 bg: Color::Rgb(18, 22, 30),
+                dim: Color::Rgb(47, 55, 71),
             },
             ThemeName::Midnight => Theme {
                 brand: Color::Rgb(129, 140, 248),
@@ -133,6 +137,7 @@ impl Theme {
                 grey: Color::Rgb(92, 102, 128),
                 fg: Color::Rgb(203, 213, 225),
                 bg: Color::Rgb(13, 16, 28),
+                dim: Color::Rgb(43, 49, 73),
             },
             ThemeName::Matrix => Theme {
                 brand: Color::Rgb(0, 220, 120),
@@ -144,6 +149,7 @@ impl Theme {
                 grey: Color::Rgb(88, 120, 96),
                 fg: Color::Rgb(190, 255, 205),
                 bg: Color::Rgb(4, 12, 8),
+                dim: Color::Rgb(35, 56, 44),
             },
             ThemeName::Amber => Theme {
                 brand: Color::Rgb(255, 183, 77),
@@ -155,6 +161,7 @@ impl Theme {
                 grey: Color::Rgb(140, 122, 96),
                 fg: Color::Rgb(236, 226, 206),
                 bg: Color::Rgb(24, 19, 12),
+                dim: Color::Rgb(66, 55, 40),
             },
             ThemeName::Nord => Theme {
                 brand: Color::Rgb(136, 192, 208),
@@ -166,6 +173,7 @@ impl Theme {
                 grey: Color::Rgb(118, 128, 146),
                 fg: Color::Rgb(216, 222, 233),
                 bg: Color::Rgb(46, 52, 64),
+                dim: Color::Rgb(71, 79, 95),
             },
             ThemeName::Dracula => Theme {
                 brand: Color::Rgb(189, 147, 249),
@@ -177,6 +185,7 @@ impl Theme {
                 grey: Color::Rgb(98, 114, 164),
                 fg: Color::Rgb(248, 248, 242),
                 bg: Color::Rgb(40, 42, 54),
+                dim: Color::Rgb(59, 63, 85),
             },
             ThemeName::Light => Theme {
                 brand: Color::Rgb(0, 121, 107),
@@ -188,6 +197,7 @@ impl Theme {
                 grey: Color::Rgb(120, 128, 138),
                 fg: Color::Rgb(24, 28, 34),
                 bg: Color::Rgb(250, 250, 248),
+                dim: Color::Rgb(205, 211, 218),
             },
             ThemeName::Mono => Theme {
                 brand: Color::Rgb(228, 228, 228),
@@ -199,6 +209,7 @@ impl Theme {
                 grey: Color::Rgb(112, 112, 112),
                 fg: Color::Rgb(226, 226, 226),
                 bg: Color::Rgb(20, 20, 20),
+                dim: Color::Rgb(58, 58, 58),
             },
         }
     }
@@ -295,5 +306,10 @@ impl Theme {
     /// Style for dim descriptive text inside modals.
     pub fn modal_body(&self) -> Style {
         Style::default().fg(self.fg)
+    }
+
+    /// Style for quiet chrome: unfocused borders, dividers, the tab underline.
+    pub fn dim_border(&self) -> Style {
+        Style::default().fg(self.dim)
     }
 }

@@ -8,16 +8,16 @@ use super::{
     widgets::{right_pad, shorten_path, tilde_path},
 };
 use crate::{
-    app::{ActiveTab, AppState, BusyState, visible_indices},
+    app::{visible_indices, ActiveTab, AppState, BusyState},
     theme::Theme,
     version::GoVersion,
 };
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph, Tabs},
+    Frame,
 };
 
 // ----------------------------------------- Public API ----------------------------------------- //
@@ -189,23 +189,29 @@ fn render_tabs(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
     let available_count = state.versions.len();
 
     let tab = |name: &'static str, count: usize, active: bool| {
-        let style = if active {
-            theme.tab_active()
+        if active {
+            // Neon box: full-brand rails, dark glass body, bright text.
+            let fg = theme.brand;
+            let accent = theme.success; // The "neon glow" color (e.g., bright green/cyan)
+
+            let pill_style = Style::default().fg(fg).add_modifier(Modifier::BOLD);
+            let accent_style = Style::default().fg(accent);
+            let count_style = Style::default().fg(fg).add_modifier(Modifier::BOLD);
+
+            Line::from(vec![
+                Span::styled(" ● ", accent_style), // Glowing neon power indicator
+                Span::styled(name, pill_style),
+                Span::styled(format!(" ({}) ", count), count_style),
+            ])
         } else {
-            theme.tab_inactive()
-        };
-        Line::from(vec![
-            Span::styled(if active { "● " } else { "○ " }, style),
-            Span::styled(name.to_string(), style),
-            Span::styled(
-                format!(" ({})", count),
-                if active {
-                    theme.badge_active()
-                } else {
-                    theme.muted()
-                },
-            ),
-        ])
+            // One notch quieter than before: plain gray, no marker glow.
+            let dim = Style::default().fg(theme.grey);
+            Line::from(vec![
+                Span::styled("  ○ ", dim),
+                Span::styled(name, dim),
+                Span::styled(format!(" ({})  ", count), dim),
+            ])
+        }
     };
 
     let titles = vec![
@@ -226,13 +232,15 @@ fn render_tabs(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
             ActiveTab::Available => 0,
             ActiveTab::Installed => 1,
         })
-        .divider(Span::styled("│", theme.muted()))
+        .divider(Span::styled("│", theme.dim_border()))
         .block(
             Block::default()
                 .borders(Borders::BOTTOM)
-                .border_style(theme.border()),
+                .border_style(theme.dim_border()),
         )
-        .highlight_style(theme.brand_bold());
+        // 🚨 CRITICAL: we style the spans ourselves; a non-default highlight
+        // style would patch over the pill and flatten the contrast.
+        .highlight_style(Style::default());
     frame.render_widget(tabs, area);
 }
 
@@ -392,7 +400,7 @@ fn content_block(theme: &Theme) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.brand_dark))
+        .border_style(theme.dim_border())
 }
 
 /// Renders the keyboard-shortcut footer.
