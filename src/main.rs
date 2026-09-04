@@ -7,7 +7,7 @@ use clap::Parser;
 use crossterm::{
     event::{self, Event},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use govmr::{
     app::{self, Action, App},
@@ -16,7 +16,7 @@ use govmr::{
     manager::GoManager,
     tui,
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{Terminal, backend::CrosstermBackend};
 use std::{io, sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 

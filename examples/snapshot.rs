@@ -5,8 +5,7 @@ use govmr::{
     tui::dashboard::{render, render_overlays},
     version::GoVersion,
 };
-use ratatui::backend::TestBackend;
-use ratatui::Terminal;
+use ratatui::{backend::TestBackend, Terminal};
 
 fn fixtures() -> Vec<GoVersion> {
     vec![

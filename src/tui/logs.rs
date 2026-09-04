@@ -4,11 +4,11 @@
 use super::widgets::tilde_path;
 use crate::{app::AppState, logging, theme::Theme};
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::Style,
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
-    Frame,
 };
 
 // ------------------------------------- Public (crate) API ------------------------------------- //

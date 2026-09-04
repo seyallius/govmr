@@ -12,7 +12,7 @@ use crate::{
     logging,
     shim::ShimManager,
     theme::{Theme, ThemeName},
-    version::{compare_versions, GoRelease, GoVersion},
+    version::{GoRelease, GoVersion, compare_versions},
 };
 use std::{
     env::consts::{ARCH, OS},

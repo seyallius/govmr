@@ -4,12 +4,12 @@ use super::widgets::{centered_rect, tilde_path};
 use crate::{logging, manager::GoManager, theme::Theme};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
-    backend::Backend, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
+    Frame, Terminal,
+    backend::Backend,
+    layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::Style,
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
-    Frame,
-    Terminal,
 };
 use std::io;
 

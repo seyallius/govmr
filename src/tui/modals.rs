@@ -8,11 +8,11 @@ use crate::{
     version::GoVersion,
 };
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Gauge, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 
 // ------------------------------------- Public (crate) API ------------------------------------- //

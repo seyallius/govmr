@@ -2,11 +2,11 @@
 
 use crate::theme::Theme;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
     text::{Line, Span},
     widgets::Block,
-    Frame,
 };
 
 // -------------------------------------- Internal Helpers -------------------------------------- //

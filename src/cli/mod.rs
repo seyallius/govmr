@@ -6,12 +6,12 @@ mod progress;
 use crate::{
     manager::GoManager,
     theme::ThemeName,
-    version::{resolve_version, GoVersion},
+    version::{GoVersion, resolve_version},
 };
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use indicatif::ProgressStyle;
-use output::{paint, CYAN, GREEN, GREY, RED, RESET, YELLOW};
+use output::{CYAN, GREEN, GREY, RED, RESET, YELLOW, paint};
 use progress::CliProgress;
 use std::sync::Arc;
 

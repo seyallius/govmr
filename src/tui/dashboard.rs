@@ -8,16 +8,16 @@ use super::{
     widgets::{right_pad, shorten_path, tilde_path},
 };
 use crate::{
-    app::{visible_indices, ActiveTab, AppState, BusyState},
+    app::{ActiveTab, AppState, BusyState, visible_indices},
     theme::Theme,
     version::GoVersion,
 };
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph, Tabs},
-    Frame,
 };
 
 // ----------------------------------------- Public API ----------------------------------------- //

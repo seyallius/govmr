@@ -1,6 +1,6 @@
 //! Module install - Streaming download of toolchain archives with progress reporting.
 
-use super::{archive, GoManager};
+use super::{GoManager, archive};
 use crate::{errors::GovmError, logging, version::GoVersion};
 use futures_util::StreamExt;
 use std::{
