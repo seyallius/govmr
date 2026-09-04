@@ -2,8 +2,8 @@
 //!
 //! Network-bound work (refresh, install) is spawned as a background task that
 //! reports back through the shared channel, keeping the render loop fluid;
-//! quick local operations (switch, delete) run inline and post a follow-up
-//! action where a refresh of the UI is needed.
+//! quick local operations (switch, delete, path-fix) run inline and post a
+//! follow-up action where a refresh of the UI is needed.
 
 use crate::{
     app::{Action, App, BusyState, MsgKind, Phase},
@@ -131,6 +131,23 @@ pub async fn handle_actions(
                     }
                 }
                 let _ = action_tx.send(Action::Refresh);
+            }
+            Action::FixPath => {
+                // Runs the platform's permanent PATH snippet in a hidden child
+                // process; fast and local, so it runs inline.
+                match manager.fix_path_permanently() {
+                    Ok(()) => {
+                        app.state.is_shim_in_path = manager.get_shim_manager().is_in_path();
+                        app.set_status(
+                            "PATH fixed permanently! Open a NEW terminal for `go` to resolve.",
+                            MsgKind::Success,
+                        );
+                    }
+                    Err(e) => {
+                        logging::error(&format!("fix-path failed: {e}"));
+                        app.set_status(format!("Could not fix PATH: {}", e), MsgKind::Error);
+                    }
+                }
             }
         }
     }

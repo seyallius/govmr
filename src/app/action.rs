@@ -24,4 +24,7 @@ pub enum Action {
     Use(GoVersion),
     /// Remove an installed Go version from disk.
     Delete(GoVersion),
+    /// Apply the permanent PATH fix by running the platform snippet in a
+    /// hidden child process (the `f` key in the setup/help overlay).
+    FixPath,
 }

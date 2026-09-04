@@ -41,13 +41,20 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
         return KeyOutcome::Quit;
     }
 
-    // Help overlay captures every OTHER key until dismissed, EXCEPT 'q' which quits the app.
+    // Help overlay captures every OTHER key until dismissed, EXCEPT 'q' which
+    // quits the app and 'f' which applies the permanent PATH fix.
     if app.state.show_help {
-        if key.code == KeyCode::Char('q') {
-            return KeyOutcome::Quit;
-        }
-        app.state.show_help = false;
-        return KeyOutcome::Continue;
+        return match key.code {
+            KeyCode::Char('q') => KeyOutcome::Quit,
+            KeyCode::Char('f') => {
+                let _ = action_tx.send(Action::FixPath);
+                KeyOutcome::Continue
+            }
+            _ => {
+                app.state.show_help = false;
+                KeyOutcome::Continue
+            }
+        };
     }
 
     // Theme picker: navigate with arrows/vim keys, Enter saves,

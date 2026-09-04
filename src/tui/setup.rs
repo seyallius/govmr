@@ -4,12 +4,12 @@ use super::widgets::centered_rect;
 use crate::theme::Theme;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
-    backend::Backend,
-    layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
+    backend::Backend, layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::Style,
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
-    Frame, Terminal,
+    Frame,
+    Terminal,
 };
 use std::io;
 
@@ -54,8 +54,9 @@ pub async fn run_setup_guide_if_needed<B: Backend>(
 /// Draws the PATH-setup help overlay centered on the current frame.
 ///
 /// Used both for first-time onboarding and the in-app `[h]` help overlay.
-/// Platform-specific: shows one command on Unix, two commands (PowerShell + CMD)
-/// plus concrete GUI steps on Windows.
+/// Shows only short one-liners; the permanent fix is applied by pressing `f`,
+/// which runs the platform script in a hidden child process (see
+/// [`crate::manager::GoManager::fix_path_permanently`]).
 pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str, theme: &Theme) {
     // Wider on roomy terminals, but clamped so it never overflows small screens.
     let pct_x = if screen.width >= 90 { 78 } else { 92 };
@@ -80,28 +81,21 @@ pub fn draw_setup_modal(frame: &mut Frame, screen: Rect, shim_path: &str, theme:
         vertical: 1,
     });
 
-    #[cfg(unix)]
-    draw_setup_content_unix(frame, inner, shim_path, theme);
-    #[cfg(windows)]
-    draw_setup_content_windows(frame, inner, shim_path, theme);
+    draw_setup_content(frame, inner, shim_path, theme);
 }
 
 // -------------------------------------- Internal Helpers -------------------------------------- //
 
-/// Unix layout: one `export` command + copy-pasteable shell profile one-liner.
-#[cfg(unix)]
-fn draw_setup_content_unix(frame: &mut Frame, inner: Rect, shim_path: &str, theme: &Theme) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(2), // Description
-            Constraint::Length(3), // Current-session export command
-            Constraint::Length(1), // Spacer
-            Constraint::Length(3), // Permanent profile one-liner
-            Constraint::Min(1),    // Hint
-            Constraint::Length(2), // Press any key
-        ])
-        .split(inner);
+/// Renders the setup content for the current platform.
+///
+/// On Unix, this shows a short `export` one-liner + `f` to persist via govmr itself.
+/// On Windows, this shows a short session one-liner + `f` to fix permanently.
+///
+/// The verbose (but safe, idempotent) PowerShell script on Windows is intentionally NOT
+/// rendered here — pressing `f` runs it in a hidden child process instead,
+/// so nothing long ever overflows the modal.
+fn draw_setup_content(frame: &mut Frame, inner: Rect, shim_path: &str, theme: &Theme) {
+    let chunks = create_layout_chunks(inner);
 
     // Description
     frame.render_widget(
@@ -112,55 +106,45 @@ fn draw_setup_content_unix(frame: &mut Frame, inner: Rect, shim_path: &str, them
         chunks[0],
     );
 
-    // Current-session command
+    // Current-session one-liner
+    #[cfg(unix)]
     let session_cmd = format!("export PATH=\"{}:$PATH\"", shim_path);
+    #[cfg(windows)]
+    let session_cmd = format!("$env:PATH+=\";{}\"", shim_path);
+
     let session_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(theme.border())
         .title(Span::styled(" This session ", theme.muted()));
 
+    #[cfg(unix)]
+    let session_display = format!(" $ {} ", session_cmd);
+    #[cfg(windows)]
+    let session_display = format!(" PS> {} ", session_cmd);
+
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            format!(" $ {} ", session_cmd),
+            session_display,
             theme.brand_bold(),
         )))
-        .block(session_block),
+            .block(session_block),
         chunks[1],
     );
 
-    // Permanent profile one-liner (auto-detects shell)
-    let shell_profile = detect_shell_profile();
-    let persist_cmd = format!(
-        "echo 'export PATH=\"{}:$PATH\"' >> {} && source {}",
-        shim_path, shell_profile, shell_profile
-    );
-    let persist_block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(theme.border())
-        .title(Span::styled(" Make it permanent ", theme.muted()));
+    // Press f to fix permanently
+    #[cfg(unix)]
+    let fix_text = " to fix permanently (govmr appends to your shell profile for you).";
+    #[cfg(windows)]
+    let fix_text = " to fix permanently (govmr runs the PowerShell snippet for you).";
 
     frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            format!(" $ {} ", persist_cmd),
-            theme.brand_bold(),
-        )))
-        .block(persist_block),
+        Paragraph::new(Line::from(vec![
+            Span::styled(" Press ", theme.muted()),
+            Span::styled("f", theme.key_hint()),
+            Span::styled(fix_text, theme.muted()),
+        ])),
         chunks[3],
-    );
-
-    // Hint
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            format!(
-                " Run the second command to persist across reboots (appends to {}).",
-                shell_profile
-            ),
-            theme.muted(),
-        )))
-        .wrap(ratatui::widgets::Wrap { trim: true }),
-        chunks[4],
     );
 
     // Press any key
@@ -170,118 +154,26 @@ fn draw_setup_content_unix(frame: &mut Frame, inner: Rect, shim_path: &str, them
             Span::styled("any key", theme.key_hint()),
             Span::styled(" to close ", theme.muted()),
         ]))
-        .alignment(Alignment::Center),
+            .alignment(Alignment::Center),
         chunks[5],
     );
 }
 
-/// Best-effort detection of the user's active shell profile file.
+/// Creates the layout chunks for the application interface.
 ///
-/// Falls back to `~/.bashrc` if `$SHELL` is unset or unrecognized.
-#[cfg(unix)]
-fn detect_shell_profile() -> String {
-    let home = dirs::home_dir()
-        .map(|h| h.to_string_lossy().to_string())
-        .unwrap_or_else(|| "~".to_string());
-
-    match std::env::var("SHELL").unwrap_or_default().as_str() {
-        s if s.ends_with("/zsh") => format!("{}/.zshrc", home),
-        s if s.ends_with("/fish") => format!("{}/.config/fish/config.fish", home),
-        s if s.ends_with("/bash") => format!("{}/.bashrc", home),
-        _ => format!("{}/.bashrc", home),
-    }
-}
-
-/// Windows layout: A single, robust PowerShell script that safely updates both
-/// the permanent User PATH and the current session, plus a GUI fallback.
-#[cfg(windows)]
-fn draw_setup_content_windows(frame: &mut Frame, inner: Rect, shim_path: &str, theme: &Theme) {
-    let chunks = Layout::default()
+/// This layout organizes the terminal space into a vertical arrangement
+/// with specific sections for displaying application information and controls.
+fn create_layout_chunks(inner: Rect) -> Vec<Rect> {
+    Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(2), // Description
-            Constraint::Length(6), // PowerShell script block (4 lines + borders)
-            Constraint::Length(2), // CMD note
-            Constraint::Min(1),    // GUI fallback
+            Constraint::Length(3), // Current-session one-liner
+            Constraint::Length(1), // Spacer
+            Constraint::Length(2), // Press f to fix permanently
+            Constraint::Min(1),    // Filler
             Constraint::Length(2), // Press any key
         ])
-        .split(inner);
-
-    // Description
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            "Run this in PowerShell to safely add the shim permanently and to this session:",
-            theme.modal_body(),
-        ))),
-        chunks[0],
-    );
-
-    // PowerShell script block
-    let ps_script = vec![
-        Line::from(Span::styled(
-            format!("$SHIM_PATH='{}'", shim_path),
-            theme.brand_bold(),
-        )),
-        Line::from(Span::styled(
-            "$USER_PATH=[Environment]::GetEnvironmentVariable('PATH','User')",
-            theme.brand_bold(),
-        )),
-        Line::from(Span::styled(
-            "if($USER_PATH -notlike \"*$SHIM_PATH*\"){[Environment]::SetEnvironmentVariable('PATH',\"$USER_PATH;$SHIM_PATH\",'User')}",
-            theme.brand_bold(),
-        )),
-        // Also add to current session if not already there
-        Line::from(Span::styled(
-            "if($env:PATH -notlike \"*$SHIM_PATH*\"){$env:PATH+=\";$SHIM_PATH\"}",
-            theme.brand_bold(),
-        )),
-    ];
-
-    let ps_block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(theme.border())
-        .title(Span::styled(
-            " PowerShell (Safe & Permanent) ",
-            theme.muted(),
-        ));
-
-    frame.render_widget(Paragraph::new(ps_script).block(ps_block), chunks[1]);
-
-    // Note about CMD
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            "⚠ CMD users: `setx` truncates PATH >1024 chars. Use PowerShell or the GUI fallback.",
-            theme.warning(),
-        ))),
-        chunks[2],
-    );
-
-    // GUI fallback
-    let notes = vec![
-        Line::from(Span::styled(
-            " GUI Fallback: System Properties → Advanced → Environment Variables →",
-            theme.muted(),
-        )),
-        Line::from(Span::styled(
-            " User Path → Edit → New → paste the shim path. Restart terminal after.",
-            theme.muted(),
-        )),
-    ];
-
-    frame.render_widget(
-        Paragraph::new(notes).wrap(ratatui::widgets::Wrap { trim: true }),
-        chunks[3],
-    );
-
-    // Press any key
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(" Press ", theme.muted()),
-            Span::styled("any key", theme.key_hint()),
-            Span::styled(" to close ", theme.muted()),
-        ]))
-        .alignment(Alignment::Center),
-        chunks[4],
-    );
+        .split(inner)
+        .to_vec()
 }

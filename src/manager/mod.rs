@@ -17,6 +17,7 @@ use crate::{
 use std::{
     env::consts::{ARCH, OS},
     fs,
+    io::Write,
     path::PathBuf,
     sync::Mutex,
     time::Duration,
@@ -208,5 +209,85 @@ impl GoManager {
         }
         logging::info(&format!("delete: removed go{}", version.raw_version));
         Ok(())
+    }
+
+    /// Applies the permanent PATH fix by running the platform snippet in a
+    /// hidden child process.
+    ///
+    /// * **Windows**: runs an idempotent PowerShell snippet that appends the
+    ///   shim dir to the *User* PATH (no `setx`, so no 1024-char truncation).
+    ///   Only takes effect in *new* terminal sessions (Windows limitation).
+    /// * **Unix**: appends an `export PATH=...` line to the detected shell
+    ///   profile (`~/.zshrc` / `~/.config/fish/config.fish` / `~/.bashrc`),
+    ///   guarded by a marker comment so repeated presses never duplicate it.
+    ///
+    /// # Errors
+    /// Returns [`GovmError`] if the home directory cannot be resolved, the
+    /// profile cannot be written, or the child process fails to spawn/run.
+    pub fn fix_path_permanently(&self) -> Result<(), GovmError> {
+        let shim_dir = self.shim_mgr.get_shim_dir();
+        let shim = shim_dir.to_string_lossy().to_string();
+
+        #[cfg(windows)]
+        {
+            // Idempotent, truncation-safe User-PATH update. Hidden window so
+            // the TUI is never clobbered by a console flash.
+            let script = format!(
+                "$p=[Environment]::GetEnvironmentVariable('PATH','User');\
+                 if($p -notlike \"*{shim}*\"){{[Environment]::SetEnvironmentVariable('PATH',\"$p;{shim}\",'User')}}",
+                shim = shim
+            );
+            let status = std::process::Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    &script,
+                ])
+                .creation_flags(0x0800_0000) // CREATE_NO_WINDOW: never flash a console
+                .status()?;
+            if !status.success() {
+                return Err(GovmError::Extraction(format!(
+                    "PowerShell PATH fix exited with {}",
+                    status
+                )));
+            }
+
+            logging::info("fix-path: Windows User PATH updated (new terminals only)");
+            Ok(())
+        }
+
+        #[cfg(unix)]
+        {
+            let home = dirs::home_dir().ok_or(GovmError::HomeNotFound)?;
+            let profile = match std::env::var("SHELL").unwrap_or_default().as_str() {
+                s if s.ends_with("/zsh") => home.join(".zshrc"),
+                s if s.ends_with("/fish") => home.join(".config/fish/config.fish"),
+                _ => home.join(".bashrc"),
+            };
+            let marker = "# Added by govmr";
+
+            let existing = fs::read_to_string(&profile).unwrap_or_default();
+            // Idempotency guard: never append the same line twice.
+            if existing.lines().any(|l| l.trim_start().starts_with(marker)) {
+                logging::info("fix-path: profile already patched, nothing to do");
+                return Ok(());
+            }
+
+            let mut file = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&profile)?;
+            writeln!(file, "{}", marker)?;
+            writeln!(file, "export PATH=\"{}:$PATH\"", shim)?;
+
+            logging::info(&format!(
+                "fix-path: appended export line to {}",
+                profile.display()
+            ));
+            Ok(())
+        }
     }
 }

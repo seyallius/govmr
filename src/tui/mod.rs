@@ -7,3 +7,4 @@ mod status;
 mod widgets;
 
 pub use dashboard::{render, render_overlays};
+pub use setup::draw_setup_modal;
