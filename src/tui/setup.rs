@@ -1,14 +1,15 @@
 //! Module setup - Interactive onboarding screen and in-app PATH help overlay.
 
+use super::widgets::centered_rect;
 use crate::theme::Theme;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
-    Frame, Terminal,
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::Style,
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
+    Frame, Terminal,
 };
 use std::io;
 
@@ -283,25 +284,4 @@ fn draw_setup_content_windows(frame: &mut Frame, inner: Rect, shim_path: &str, t
         .alignment(Alignment::Center),
         chunks[4],
     );
-}
-
-/// Calculates a centered rectangle for the onboarding modal.
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }

@@ -1,4 +1,9 @@
-//! Module tui - Terminal user interface components, views, and onboarding flows.
+//! Module tui - Terminal user interface: dashboard composition, modals, and onboarding flows.
 
+pub mod dashboard;
+mod modals;
 pub mod setup;
-pub mod views;
+mod status;
+mod widgets;
+
+pub use dashboard::{render, render_overlays};

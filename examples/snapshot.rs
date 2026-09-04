@@ -1,10 +1,12 @@
 //! Renders key TUI screens to plain-text + ANSI snapshots for visual inspection.
-use govmr::app::{ActiveTab, AppState, BusyState, Phase};
-use govmr::models::GoVersion;
-use govmr::theme::{Theme, ThemeName};
-use govmr::tui::views::{render, render_overlays};
-use ratatui::Terminal;
+use govmr::{
+    app::{ActiveTab, AppState, BusyState, Phase},
+    theme::{Theme, ThemeName},
+    tui::dashboard::{render, render_overlays},
+    version::GoVersion,
+};
 use ratatui::backend::TestBackend;
+use ratatui::Terminal;
 
 fn fixtures() -> Vec<GoVersion> {
     vec![
@@ -59,7 +61,12 @@ fn dump<F: FnOnce(&mut AppState)>(name: &str, configure: F) {
     let mut terminal = Terminal::new(TestBackend::new(92, 24)).unwrap();
     let mut state = AppState::from_versions(fixtures(), false);
     configure(&mut state);
-    terminal.draw(|f| { render(f, &mut state); render_overlays(f, &state); }).unwrap();
+    terminal
+        .draw(|f| {
+            render(f, &mut state);
+            render_overlays(f, &state);
+        })
+        .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let area = buffer.area();
 

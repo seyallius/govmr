@@ -1,12 +1,13 @@
 //! Headless smoke tests: render every TUI state into an in-memory buffer and
 //! assert that drawing never panics and key strings appear where expected.
 
-use govmr::app::{ActiveTab, AppState, BusyState, Phase};
-use govmr::models::GoVersion;
-use govmr::theme::{Theme, ThemeName};
-use govmr::tui::views::{render, render_overlays};
-use ratatui::Terminal;
-use ratatui::{backend::TestBackend, buffer::Buffer};
+use govmr::{
+    app::{ActiveTab, AppState, BusyState, Phase},
+    theme::{Theme, ThemeName},
+    tui::dashboard::{render, render_overlays},
+    version::GoVersion,
+};
+use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
 
 fn make_terminal() -> Terminal<TestBackend> {
     Terminal::new(TestBackend::new(100, 30)).unwrap()
@@ -33,7 +34,9 @@ fn versions_fixture() -> Vec<GoVersion> {
             size: 72_000_000,
             installed: true,
             active: true,
-            path: Some(std::path::PathBuf::from("/home/tester/.govmr/versions/go1.24rc1")),
+            path: Some(std::path::PathBuf::from(
+                "/home/tester/.govmr/versions/go1.24rc1",
+            )),
             stable: false,
         },
         GoVersion {
@@ -44,7 +47,9 @@ fn versions_fixture() -> Vec<GoVersion> {
             size: 65_000_000,
             installed: true,
             active: false,
-            path: Some(std::path::PathBuf::from("/home/tester/.govmr/versions/go1.21.6")),
+            path: Some(std::path::PathBuf::from(
+                "/home/tester/.govmr/versions/go1.21.6",
+            )),
             stable: true,
         },
     ]
@@ -54,7 +59,12 @@ fn versions_fixture() -> Vec<GoVersion> {
 fn renders_available_tab() {
     let mut terminal = make_terminal();
     let mut state = AppState::from_versions(versions_fixture(), true);
-    terminal.draw(|f| { render(f, &mut state); render_overlays(f, &state); }).unwrap();
+    terminal
+        .draw(|f| {
+            render(f, &mut state);
+            render_overlays(f, &state);
+        })
+        .unwrap();
 
     let text = buffer_as_text(terminal.backend().buffer());
     assert!(text.contains("GoVMR"), "brand title should render");
@@ -70,7 +80,12 @@ fn renders_installed_tab_with_paths() {
     let mut state = AppState::from_versions(versions_fixture(), true);
     state.active_tab = ActiveTab::Installed;
     state.list_state.select(Some(0));
-    terminal.draw(|f| { render(f, &mut state); render_overlays(f, &state); }).unwrap();
+    terminal
+        .draw(|f| {
+            render(f, &mut state);
+            render_overlays(f, &state);
+        })
+        .unwrap();
 
     let text = buffer_as_text(terminal.backend().buffer());
     assert!(text.contains("go1.24rc1"), "installed rows should render");
@@ -89,7 +104,12 @@ fn renders_install_download_modal_with_gauge() {
         speed: 5_000_000.0,
         started_at: std::time::Instant::now(),
     });
-    terminal.draw(|f| { render(f, &mut state); render_overlays(f, &state); }).unwrap();
+    terminal
+        .draw(|f| {
+            render(f, &mut state);
+            render_overlays(f, &state);
+        })
+        .unwrap();
 
     let text = buffer_as_text(terminal.backend().buffer());
     assert!(text.contains("Installing Go 1.22.0"), "modal title");
@@ -108,7 +128,12 @@ fn renders_extraction_phase_modal() {
         speed: 0.0,
         started_at: std::time::Instant::now(),
     });
-    terminal.draw(|f| { render(f, &mut state); render_overlays(f, &state); }).unwrap();
+    terminal
+        .draw(|f| {
+            render(f, &mut state);
+            render_overlays(f, &state);
+        })
+        .unwrap();
 
     let text = buffer_as_text(terminal.backend().buffer());
     assert!(text.contains("extracting archive"), "extraction phase");
@@ -119,7 +144,12 @@ fn renders_delete_confirmation_modal() {
     let mut terminal = make_terminal();
     let mut state = AppState::from_versions(versions_fixture(), true);
     state.confirming_delete = Some("1.21.6".into());
-    terminal.draw(|f| { render(f, &mut state); render_overlays(f, &state); }).unwrap();
+    terminal
+        .draw(|f| {
+            render(f, &mut state);
+            render_overlays(f, &state);
+        })
+        .unwrap();
 
     let text = buffer_as_text(terminal.backend().buffer());
     assert!(text.contains("Deletion"), "delete modal title");
@@ -133,7 +163,12 @@ fn renders_filter_mode_and_filters_rows() {
     state.filter_mode = true;
     state.filter = "1.22".into();
     state.list_state.select(Some(0));
-    terminal.draw(|f| { render(f, &mut state); render_overlays(f, &state); }).unwrap();
+    terminal
+        .draw(|f| {
+            render(f, &mut state);
+            render_overlays(f, &state);
+        })
+        .unwrap();
 
     let text = buffer_as_text(terminal.backend().buffer());
     assert!(text.contains("Filter"), "filter prompt shown");
@@ -144,7 +179,12 @@ fn renders_filter_mode_and_filters_rows() {
 fn renders_path_warning_when_shim_missing() {
     let mut terminal = make_terminal();
     let mut state = AppState::from_versions(versions_fixture(), false);
-    terminal.draw(|f| { render(f, &mut state); render_overlays(f, &state); }).unwrap();
+    terminal
+        .draw(|f| {
+            render(f, &mut state);
+            render_overlays(f, &state);
+        })
+        .unwrap();
 
     let text = buffer_as_text(terminal.backend().buffer());
     assert!(text.contains("PATH"), "path warning banner shown");
@@ -202,7 +242,10 @@ fn light_theme_fills_screen_with_light_background() {
             }
         }
     }
-    assert!(seen_light_bg, "light theme should paint a solid light background");
+    assert!(
+        seen_light_bg,
+        "light theme should paint a solid light background"
+    );
 }
 
 #[test]

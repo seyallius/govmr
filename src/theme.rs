@@ -25,7 +25,6 @@ pub enum ThemeName {
     /// Minimal greyscale.
     Mono,
 }
-
 impl ThemeName {
     /// Every available theme, in display order.
     pub const ALL: [ThemeName; 8] = [
@@ -76,13 +75,11 @@ impl ThemeName {
             .find(|t| t.key() == key || t.title().to_lowercase() == key)
     }
 }
-
 impl fmt::Display for ThemeName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.title())
     }
 }
-
 impl Default for ThemeName {
     fn default() -> Self {
         ThemeName::GoCyan
@@ -111,7 +108,6 @@ pub struct Theme {
     /// Screen background fill.
     pub bg: Color,
 }
-
 impl Theme {
     /// Builds the palette for the named scheme.
     pub fn for_name(name: ThemeName) -> Theme {
@@ -264,7 +260,9 @@ impl Theme {
 
     /// Style for pre-release / unstable version badges.
     pub fn badge_unstable(&self) -> Style {
-        Style::default().fg(self.warning).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.warning)
+            .add_modifier(Modifier::BOLD)
     }
 
     /// Style for the "(installed)" badge.
@@ -274,7 +272,9 @@ impl Theme {
 
     /// Style for the "(active)" badge.
     pub fn badge_active(&self) -> Style {
-        Style::default().fg(self.success).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.success)
+            .add_modifier(Modifier::BOLD)
     }
 
     /// Style for an inactive tab title.

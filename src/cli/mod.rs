@@ -1,73 +1,21 @@
 //! Module cli - Command-line interface definitions and subcommand handlers.
 
-use crate::manager::{GoManager, InstallProgress};
-use crate::models::{GoVersion, resolve_version};
-use crate::theme::ThemeName;
+mod output;
+mod progress;
+
+use crate::{
+    manager::GoManager,
+    theme::ThemeName,
+    version::{resolve_version, GoVersion},
+};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use indicatif::{ProgressBar, ProgressStyle};
-use std::sync::{Arc, Mutex};
+use indicatif::ProgressStyle;
+use output::{paint, CYAN, GREEN, GREY, RED, RESET, YELLOW};
+use progress::CliProgress;
+use std::sync::Arc;
 
-/// Owns the indicatif progress indicator and reacts to install progress events.
-struct CliProgress {
-    inner: Mutex<Option<ProgressBar>>,
-    bar_style: ProgressStyle,
-    spin_style: ProgressStyle,
-}
-impl CliProgress {
-    fn new(bar_style: ProgressStyle, spin_style: ProgressStyle) -> Self {
-        Self {
-            inner: Mutex::new(None),
-            bar_style,
-            spin_style,
-        }
-    }
-
-    fn on_event(&self, event: InstallProgress) {
-        let mut guard = self.inner.lock().unwrap();
-        match event {
-            InstallProgress::Downloading {
-                downloaded,
-                total,
-                ..
-            } => {
-                if guard.is_none() {
-                    let pb = if total > 0 {
-                        ProgressBar::new(total)
-                    } else {
-                        ProgressBar::new_spinner()
-                    };
-                    pb.set_style(self.bar_style.clone());
-                    *guard = Some(pb);
-                }
-                if let Some(pb) = guard.as_ref() {
-                    pb.set_position(downloaded);
-                    if total == 0 {
-                        pb.tick();
-                    }
-                }
-            }
-            InstallProgress::Extracting => {
-                if let Some(pb) = guard.take() {
-                    pb.finish_and_clear();
-                }
-                let spinner = ProgressBar::new_spinner();
-                spinner.set_style(self.spin_style.clone());
-                spinner.set_message("Unpacking archive…");
-                spinner.enable_steady_tick(std::time::Duration::from_millis(80));
-                *guard = Some(spinner);
-            }
-        }
-    }
-
-    fn finish(&self) {
-        if let Some(pb) = self.inner.lock().unwrap().as_ref() {
-            pb.finish_and_clear();
-        }
-    }
-}
-
-// ---------------------------------------------- Types ----------------------------------------- //
+// ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// CLI argument parser configuration for GoVMR.
 #[derive(Parser)]
@@ -106,6 +54,8 @@ pub enum Commands {
     },
 }
 
+// ----------------------------------------- Public API ----------------------------------------- //
+
 /// Clap value parser mapping a theme key/title to a [`ThemeName`].
 fn parse_theme(raw: &str) -> Result<ThemeName, String> {
     ThemeName::from_key(raw).ok_or_else(|| {
@@ -120,24 +70,6 @@ fn parse_theme(raw: &str) -> Result<ThemeName, String> {
         )
     })
 }
-
-// ------------------------------------------- ANSI ---------------------------------------- //
-
-// ------------------------------------------- Tiny ANSI ---------------------------------------- //
-
-const CYAN: &str = "\x1b[36m";
-const GREEN: &str = "\x1b[32m";
-const RED: &str = "\x1b[31m";
-const YELLOW: &str = "\x1b[33m";
-const GREY: &str = "\x1b[90m";
-const BOLD: &str = "\x1b[1m";
-const RESET: &str = "\x1b[0m";
-
-fn paint(color: &str, text: &str) -> String {
-    format!("{}{}{}{}", color, BOLD, text, RESET)
-}
-
-// ----------------------------------------- Public API ----------------------------------------- //
 
 /// Dispatches execution based on the parsed CLI subcommand.
 ///
@@ -244,34 +176,42 @@ pub async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
                 }
             }
         }
-        Some(Commands::Theme { name }) => {
-            match name {
-                Some(name) => {
-                    manager.set_theme(name)?;
-                    println!(
-                        "{} Theme set to {} (saved to ~/.govmr/config.toml)",
-                        paint(GREEN, "🎨"),
-                        paint(CYAN, name.title())
-                    );
-                }
-                None => {
-                    let current = manager.theme_name();
-                    println!("{}", paint(CYAN, "Available themes:"));
-                    for t in ThemeName::ALL {
-                        if t == current {
-                            println!("  {} {} {}", paint(GREEN, "●"), paint(GREEN, t.key()), paint(GREEN, "(current)"));
-                        } else {
-                            println!("  {} {:<10} {}", paint(GREY, "○"), t.key(), paint(GREY, t.title()));
-                        }
-                    }
-                    println!(
-                        "\nSwitch with {} — e.g. {}",
-                        paint(CYAN, "govmr theme <name>"),
-                        paint(CYAN, "govmr theme midnight")
-                    );
-                }
+        Some(Commands::Theme { name }) => match name {
+            Some(name) => {
+                manager.set_theme(name)?;
+                println!(
+                    "{} Theme set to {} (saved to ~/.govmr/config.toml)",
+                    paint(GREEN, "🎨"),
+                    paint(CYAN, name.title())
+                );
             }
-        }
+            None => {
+                let current = manager.theme_name();
+                println!("{}", paint(CYAN, "Available themes:"));
+                for t in ThemeName::ALL {
+                    if t == current {
+                        println!(
+                            "  {} {} {}",
+                            paint(GREEN, "●"),
+                            paint(GREEN, t.key()),
+                            paint(GREEN, "(current)")
+                        );
+                    } else {
+                        println!(
+                            "  {} {:<10} {}",
+                            paint(GREY, "○"),
+                            t.key(),
+                            paint(GREY, t.title())
+                        );
+                    }
+                }
+                println!(
+                    "\nSwitch with {} — e.g. {}",
+                    paint(CYAN, "govmr theme <name>"),
+                    paint(CYAN, "govmr theme midnight")
+                );
+            }
+        },
         None => unreachable!(),
     }
     Ok(())

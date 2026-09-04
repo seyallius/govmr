@@ -5,18 +5,18 @@
 
 use clap::Parser;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    event::{self, Event},
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use govmr::{
-    app::{Action, App, BusyState, MsgKind, Phase},
-    cli::{Cli, handle_cli},
+    app::{self, Action, App},
+    cli::{self, Cli},
     logging,
     manager::GoManager,
     tui,
 };
-use ratatui::{Terminal, backend::CrosstermBackend};
+use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{io, sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 
@@ -34,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
             "govmr {} started (cli mode)",
             env!("CARGO_PKG_VERSION")
         ));
-        let result = handle_cli(cli_args, manager).await;
+        let result = cli::handle_cli(cli_args, manager).await;
         if let Err(e) = &result {
             logging::error(&format!("cli command failed: {e}"));
         }
@@ -100,281 +100,19 @@ async fn run_tui(
 
     loop {
         terminal.draw(|f| {
-            tui::views::render(f, &mut app.state);
-            tui::views::render_overlays(f, &app.state);
+            tui::render(f, &mut app.state);
+            tui::render_overlays(f, &app.state);
         })?;
-        handle_actions(&mut action_rx, &mut app, &manager, &action_tx).await?;
+        app::handle_actions(&mut action_rx, &mut app, &manager, &action_tx).await?;
 
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                // Only react on key press (not release/repeat artifacts).
-                if key.kind == KeyEventKind::Release {
-                    continue;
-                }
-
-                // Universal quit shortcuts MUST bypass modal capture.
-                if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                if let app::KeyOutcome::Quit = app::handle_key(key, &mut app, &action_tx) {
                     break;
                 }
-
-                // Help overlay captures every OTHER key until dismissed, EXCEPT 'q' which quits the app.
-                if app.state.show_help {
-                    if key.code == KeyCode::Char('q') {
-                        break;
-                    }
-                    app.state.show_help = false;
-                    continue;
-                }
-
-                // Theme picker: navigate with arrows/vim keys, Enter saves,
-                // Esc/q cancels and restores the persisted theme.
-                if app.state.show_theme_picker {
-                    match key.code {
-                        KeyCode::Esc | KeyCode::Char('q') => app.picker_cancel(),
-                        KeyCode::Enter => app.picker_apply(),
-                        KeyCode::Down | KeyCode::Char('j') => app.picker_move(1),
-                        KeyCode::Up | KeyCode::Char('k') => app.picker_move(-1),
-                        KeyCode::Char(c) if c.is_ascii_digit() && c != '0' => {
-                            let i = (c as u8 - b'1') as usize;
-                            if i < govmr::theme::ThemeName::ALL.len() {
-                                app.state.theme_picker_index = i;
-                                app.state.theme = govmr::theme::Theme::for_name(app.picker_theme());
-                                app.picker_apply();
-                            }
-                        }
-                        _ => {}
-                    }
-                    continue;
-                }
-
-                // Destructive-action confirmation takes precedence.
-                if let Some(target) = app.state.confirming_delete.take() {
-                    match key.code {
-                        KeyCode::Char('y') | KeyCode::Char('Y') => {
-                            if let Some(v) = app
-                                .state
-                                .versions
-                                .iter()
-                                .find(|x| x.raw_version == target)
-                                .cloned()
-                            {
-                                let _ = action_tx.send(Action::Delete(v));
-                            }
-                        }
-                        _ => {
-                            app.set_status("Delete cancelled", MsgKind::Info);
-                        }
-                    }
-                    continue;
-                }
-
-                // While typing a filter query, capture text input.
-                if app.state.filter_mode {
-                    match key.code {
-                        KeyCode::Esc => {
-                            app.state.filter.clear();
-                            app.state.filter_mode = false;
-                            app.state.list_state.select(Some(0));
-                        }
-                        KeyCode::Enter => {
-                            app.state.filter_mode = false;
-                            app.clamp_selection();
-                        }
-                        KeyCode::Backspace => {
-                            app.state.filter.pop();
-                            app.state.list_state.select(Some(0));
-                        }
-                        KeyCode::Char(c) => {
-                            app.state.filter.push(c);
-                            app.state.list_state.select(Some(0));
-                        }
-                        _ => {}
-                    }
-                    continue;
-                }
-
-                match key.code {
-                    KeyCode::Char('q') => break,
-                    KeyCode::Tab => app.switch_tab(),
-                    KeyCode::Down | KeyCode::Char('j') => app.next_item(),
-                    KeyCode::Up | KeyCode::Char('k') => app.previous_item(),
-                    KeyCode::Char('/') => {
-                        app.state.filter_mode = true;
-                    }
-                    KeyCode::Char('T') => {
-                        app.open_theme_picker();
-                    }
-                    KeyCode::Char('h') | KeyCode::Char('?') => {
-                        app.state.show_help = true;
-                    }
-                    KeyCode::Char('r') if !app.is_busy() => {
-                        let _ = action_tx.send(Action::Refresh);
-                    }
-                    KeyCode::Char('i') if !app.is_busy() => {
-                        if let Some(v) = app.selected_version().cloned() {
-                            if v.installed {
-                                app.set_status(
-                                    format!("Go {} is already installed", v.raw_version),
-                                    MsgKind::Info,
-                                );
-                            } else {
-                                let _ = action_tx.send(Action::Install(v));
-                            }
-                        }
-                    }
-                    KeyCode::Char('u') if !app.is_busy() => {
-                        if let Some(v) = app.selected_version().cloned() {
-                            if v.installed {
-                                let _ = action_tx.send(Action::Use(v));
-                            } else {
-                                app.set_status(
-                                    "Install this version first — press i",
-                                    MsgKind::Error,
-                                );
-                            }
-                        }
-                    }
-                    KeyCode::Char('d') if !app.is_busy() => {
-                        if let Some(v) = app.selected_version().cloned() {
-                            if v.active {
-                                app.set_status(
-                                    "Cannot delete the active version — switch first",
-                                    MsgKind::Error,
-                                );
-                            } else if v.installed {
-                                app.state.confirming_delete = Some(v.raw_version.clone());
-                            }
-                        }
-                    }
-                    _ => {}
-                }
             }
         }
     }
 
-    Ok(())
-}
-
-/// Drains and processes all queued background actions for one event-loop tick.
-///
-/// Each arm only manages the busy state of its *own* operation. Long-running
-/// tasks are spawned and report back via the MPSC channel to keep the UI fluid.
-async fn handle_actions(
-    action_rx: &mut mpsc::UnboundedReceiver<Action>,
-    app: &mut App,
-    manager: &Arc<GoManager>,
-    action_tx: &mpsc::UnboundedSender<Action>,
-) -> anyhow::Result<()> {
-    while let Ok(action) = action_rx.try_recv() {
-        match action {
-            Action::Refresh => {
-                app.state.busy = Some(BusyState::Refreshing);
-                let mgr = manager.clone();
-                let tx = action_tx.clone();
-
-                // Spawn a background task to fetch versions without blocking the render loop
-                tokio::spawn(async move {
-                    let result = mgr.fetch_versions().await;
-                    let _ = tx.send(Action::RefreshDone(result.map_err(|e| e.to_string())));
-                });
-            }
-            Action::RefreshDone(result) => {
-                app.state.busy = None;
-                match result {
-                    Ok(versions) => {
-                        app.state.versions = versions;
-                        app.state.status_message = None;
-                        app.clamp_selection();
-                    }
-                    Err(e) => {
-                        app.set_status(e, MsgKind::Error);
-                    }
-                }
-            }
-            Action::Install(v) => {
-                app.state.busy = Some(BusyState::Installing {
-                    version: v.raw_version.clone(),
-                    phase: Phase::Downloading,
-                    downloaded: 0,
-                    total: v.size,
-                    speed: 0.0,
-                    started_at: std::time::Instant::now(),
-                });
-                app.state.status_message = None;
-                let mgr = manager.clone();
-                let progress_tx = action_tx.clone();
-                let done_tx = action_tx.clone();
-
-                tokio::spawn(async move {
-                    let progress_tx2 = progress_tx.clone();
-                    let result = mgr
-                        .download_and_install(&v, move |p| {
-                            let _ = progress_tx2.send(Action::InstallProgress(p));
-                        })
-                        .await;
-                    match result {
-                        Ok(_) => {
-                            let _ = done_tx.send(Action::InstallDone(v));
-                        }
-                        Err(e) => {
-                            let _ = done_tx.send(Action::InstallFailed(e.to_string()));
-                        }
-                    }
-                });
-            }
-            Action::InstallProgress(p) => {
-                app.update_install_progress(p);
-            }
-            Action::InstallDone(v) => {
-                app.state.busy = None;
-                app.set_status(
-                    format!("Go {} installed successfully", v.raw_version),
-                    MsgKind::Success,
-                );
-                let _ = action_tx.send(Action::Refresh);
-            }
-            Action::InstallFailed(err) => {
-                logging::error(&format!("install failed: {err}"));
-                app.state.busy = None;
-                app.set_status(format!("Installation failed: {}", err), MsgKind::Error);
-            }
-            Action::Use(v) => {
-                app.state.busy = Some(BusyState::Switching(v.raw_version.clone()));
-                match manager.switch_version(&v) {
-                    Ok(in_path) => {
-                        app.set_status(
-                            format!("Switched to Go {}", v.raw_version),
-                            MsgKind::Success,
-                        );
-                        
-                        // Update local UI state instantly without a network round-trip
-                        app.state.is_shim_in_path = in_path;
-                        for ver in &mut app.state.versions {
-                            ver.active = ver.raw_version == v.raw_version;
-                        }
-                    }
-                    Err(e) => {
-                        logging::error(&format!("use failed: {e}"));
-                        app.set_status(e.to_string(), MsgKind::Error)
-                    }
-                }
-                // Clear the busy state directly instead of waiting for RefreshDone
-                app.state.busy = None;
-            }
-            Action::Delete(v) => {
-                app.state.busy = Some(BusyState::Deleting(v.raw_version.clone()));
-                match manager.delete_version(&v) {
-                    Ok(_) => {
-                        app.set_status(format!("Deleted Go {}", v.raw_version), MsgKind::Success)
-                    }
-                    Err(e) => {
-                        logging::error(&format!("delete failed: {e}"));
-                        app.set_status(e.to_string(), MsgKind::Error)
-                    }
-                }
-                let _ = action_tx.send(Action::Refresh);
-            }
-        }
-    }
     Ok(())
 }
