@@ -1,6 +1,3 @@
-//! Copyright (c) 2026 SeyedAli
-//! Licensed under the MIT License. See LICENSE file in the project root for details.
-//
 //! Module logging. Dependency-free operation logger that appends timestamped
 //! entries to ~/.govmr/govmr.log (single-generation rotation), giving the TUI and CLI a
 //! silent, post-mortem-friendly audit trail.

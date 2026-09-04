@@ -1,6 +1,3 @@
-//! Copyright (c) 2026 SeyedAli
-//! Licensed under the MIT License. See LICENSE file in the project root for details.
-//
 //! Module cli - Command-line interface definitions and subcommand handlers.
 
 use crate::manager::{GoManager, InstallProgress};

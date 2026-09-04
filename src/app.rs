@@ -1,6 +1,3 @@
-//! Copyright (c) 2026 SeyedAli
-//! Licensed under the MIT License. See LICENSE file in the project root for details.
-//
 //! Module app - Central state container and action dispatcher for interactive TUI execution.
 
 use crate::{

@@ -1,6 +1,3 @@
-//! Copyright (c) 2026 SeyedAli
-//! Licensed under the MIT License. See LICENSE file in the project root for details.
-//
 //! Module manager - Core lifecycle coordinator for fetching, installing, switching, and deleting Go versions.
 
 use crate::{

@@ -1,6 +1,3 @@
-//! Copyright (c) 2026 SeyedAli
-//! Licensed under the MIT License. See LICENSE file in the project root for details.
-//
 //! Module styles - Color schemes, styling definitions, and UI themes for Ratatui.
 
 use ratatui::style::{Color, Modifier, Style};

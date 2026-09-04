@@ -1,6 +1,3 @@
-//! Copyright (c) 2026 SeyedAli
-//! Licensed under the MIT License. See LICENSE file in the project root for details.
-//
 //! Module theme - Selectable, persistable color schemes for the TUI.
 
 use ratatui::style::{Color, Modifier, Style};

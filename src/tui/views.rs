@@ -1,6 +1,3 @@
-//! Copyright (c) 2026 SeyedAli
-//! Licensed under the MIT License. See LICENSE file in the project root for details.
-//
 //! Module views - Main layout composition, widget rendering, and modal views for Ratatui.
 
 use super::setup::draw_setup_modal;

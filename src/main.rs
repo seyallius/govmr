@@ -1,6 +1,3 @@
-//! Copyright (c) 2026 SeyedAli
-//! Licensed under the MIT License. See LICENSE file in the project root for details.
-//
 //! GoVMR - Go Version Manager in Rust.
 //!
 //! Provides CLI and interactive TUI tooling to fetch, install, switch,
