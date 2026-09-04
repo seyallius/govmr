@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/seyallius/govmr/compare/v0.1.7...v0.2.0) - 2026-09-04
+
+### Added
+
+- *(focus)* implement high-contrast active tab with pill-style background
+- *(install)* add graceful cancellation for ongoing downloads and extractions
+- *(log)* dock IDE-style log panel with focus routing and word wrap
+- *(log)* add live operation log viewer overlay
+- *(install)* auto-activate Go version immediately after installation
+- *(path)* show result notice inside help overlay for permanent PATH fix
+- *(path)* add one-key permanent PATH fix in help overlay
+
+### Other
+
+- *(readme)* use absolute GitHub URLs for demo GIFs
+- *(imports)* reorder and clean up import statements across codebase
+- reorganize codebase into modular structure and clean up metadata
+- *(cargo)* add repository metadata and clean up doc comments
+
 ## [0.1.7](https://github.com/seyallius/govmr/compare/v0.1.6...v0.1.7) - 2026-09-03
 
 ### Fixed
