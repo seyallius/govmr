@@ -11,6 +11,28 @@ readme = "README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["go", "golang", "version-manager", "tui", "ratatui"]
 categories = ["command-line-utilities", "development-tools"]
+rust-version = "1.93.0"
+
+[package.metadata.binstall]
+pkg-url = "{repo}/releases/download/v{version}/{name}-{version}-{target}.{archive-format}"
+bin-dir = "{bin}{binary-ext}"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+archive-format = "zip"
+
+[package.metadata.binstall.overrides.x86_64-unknown-linux-gnu]
+archive-format = "tar.gz"
+
+[package.metadata.binstall.overrides.x86_64-apple-darwin]
+archive-format = "tar.gz"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+too_many_lines = "warn"
+cognitive_complexity = "warn"
+missing_docs = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
 
 [dependencies]
 # Error Handling
