@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/seyallius/govmr/compare/v0.2.0...v0.3.0) - 2026-09-05
+
+### Fixed
+
+- *(windows)* use named constant for CREATE_NO_WINDOW flag
+
+### Other
+
+- *(clippy)* address clippy warnings and improve code quality
+- *(build)* add rust-version, binstall metadata, and clippy lints
+
 ## [0.2.0](https://github.com/seyallius/govmr/compare/v0.1.7...v0.2.0) - 2026-09-04
 
 ### Added
