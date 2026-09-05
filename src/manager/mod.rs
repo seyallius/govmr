@@ -22,6 +22,7 @@ use std::{
     sync::Mutex,
     time::Duration,
 };
+
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// Primary orchestrator managing installed toolchains, downloads, and version switching.
@@ -230,13 +231,16 @@ impl GoManager {
 
         #[cfg(windows)]
         {
+            use std::os::windows::process::CommandExt;
+
             // Idempotent, truncation-safe User-PATH update. Hidden window so
             // the TUI is never clobbered by a console flash.
             let script = format!(
                 "$p=[Environment]::GetEnvironmentVariable('PATH','User');\
                  if($p -notlike \"*{shim}*\"){{[Environment]::SetEnvironmentVariable('PATH',\"$p;{shim}\",'User')}}",
             );
-            let status = std::process::Command::new("powershell")
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000; // Prevents a console window from appearing
+            let status = process::Command::new("powershell")
                 .args([
                     "-NoProfile",
                     "-NonInteractive",
@@ -245,7 +249,7 @@ impl GoManager {
                     "-Command",
                     &script,
                 ])
-                .creation_flags(0x0800_0000) // CREATE_NO_WINDOW: never flash a console
+                .creation_flags(CREATE_NO_WINDOW) // CREATE_NO_WINDOW: never flash a console
                 .status()?;
             if !status.success() {
                 return Err(GovmError::Extraction(format!(
