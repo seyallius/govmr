@@ -34,11 +34,13 @@ impl ShimManager {
     }
 
     /// Returns a reference to the directory containing executable shims.
+    #[must_use]
     pub fn get_shim_dir(&self) -> &Path {
         &self.shim_dir
     }
 
-    /// Checks if the GoVMR shim directory is present in the system's `PATH` environment variable.
+    /// Checks if the `GoVMR` shim directory is present in the system's `PATH` environment variable.
+    #[must_use]
     pub fn is_in_path(&self) -> bool {
         if let Some(paths) = env::var_os("PATH") {
             for path in env::split_paths(&paths) {

@@ -14,15 +14,16 @@ use super::GoVersion;
 /// * `1.22.0`   → `([1, 22, 0], None)`
 /// * `1.24rc1`  → `([1, 24], Some("rc1"))`
 /// * `1.21.beta2` → `([1, 21], Some("beta2"))`
+#[must_use]
 pub fn parse_version_query(raw: &str) -> (Vec<u64>, Option<String>) {
     let mut nums = Vec::new();
     let mut tag = None;
     for part in raw.split('.') {
-        let digits: String = part.chars().take_while(|c| c.is_ascii_digit()).collect();
-        if !digits.is_empty() {
-            if let Ok(n) = digits.parse::<u64>() {
-                nums.push(n);
-            }
+        let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
+        if !digits.is_empty()
+            && let Ok(n) = digits.parse::<u64>()
+        {
+            nums.push(n);
         }
         let idx = part.find(|c: char| c.is_ascii_alphabetic());
         if let Some(i) = idx {
@@ -41,6 +42,7 @@ pub fn parse_version_query(raw: &str) -> (Vec<u64>, Option<String>) {
 ///   but **not** `1.20.x`, and `1.20` never matches a future `1.200.x`.
 /// * A pre-release suffix on the query (e.g. `rc1`) must match exactly.
 /// * When the query has no suffix, only stable releases are considered.
+#[must_use]
 pub fn version_matches(query_raw: &str, version_raw: &str) -> bool {
     let (q_nums, q_tag) = parse_version_query(query_raw);
     let (v_nums, v_tag) = parse_version_query(version_raw);
@@ -63,6 +65,7 @@ pub fn version_matches(query_raw: &str, version_raw: &str) -> bool {
 ///
 /// Exact matches win; otherwise the newest stable release matching the prefix
 /// is returned. Prerelease queries require an exact pre-release match.
+#[must_use]
 pub fn resolve_version<'a>(query: &str, versions: &'a [GoVersion]) -> Option<&'a GoVersion> {
     let clean = query.trim().trim_start_matches("go");
 
@@ -98,12 +101,13 @@ pub fn resolve_version<'a>(query: &str, versions: &'a [GoVersion]) -> Option<&'a
 /// Compares dot-separated numeric components only (pre-release suffixes are
 /// ignored), so `1.10.0` sorts after `1.9.0`. Mirrors the component rules of
 /// [`version_matches`] so sorting and matching stay consistent.
+#[must_use]
 pub fn compare_versions(v1: &str, v2: &str) -> std::cmp::Ordering {
     let parse = |v: &str| -> Vec<u32> {
         v.split('.')
             .filter_map(|p| {
                 p.chars()
-                    .take_while(|c| c.is_ascii_digit())
+                    .take_while(char::is_ascii_digit)
                     .collect::<String>()
                     .parse()
                     .ok()

@@ -1,4 +1,4 @@
-//! GoVMR - Go Version Manager in Rust.
+//! `GoVMR` - Go Version Manager in Rust.
 //!
 //! Provides CLI and interactive TUI tooling to fetch, install, switch,
 //! and manage multiple Go toolchain versions seamlessly.
@@ -91,8 +91,7 @@ async fn run_tui(
         shim_in_path,
         &initial_theme,
         &manager,
-    )
-    .await?;
+    )?;
 
     if !should_continue {
         return Ok(());
@@ -113,12 +112,11 @@ async fn run_tui(
         // Keep the log viewer's contents fresh while it is open (throttled).
         app.refresh_logs_if_open();
 
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if let app::KeyOutcome::Quit = app::handle_key(key, &mut app, &action_tx) {
-                    break;
-                }
-            }
+        if event::poll(Duration::from_millis(100))?
+            && let Event::Key(key) = event::read()?
+            && let app::KeyOutcome::Quit = app::handle_key(key, &mut app, &action_tx)
+        {
+            break;
         }
     }
 

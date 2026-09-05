@@ -6,7 +6,7 @@ use futures_util::StreamExt;
 use std::{
     fs::{self, File},
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::Instant,
 };
 use tokio::io::AsyncWriteExt;
@@ -14,7 +14,7 @@ use tokio::io::AsyncWriteExt;
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// Lifecycle progress events emitted while a toolchain is being installed.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum InstallProgress {
     /// A chunk of the archive finished downloading.
     Downloading {
@@ -55,6 +55,61 @@ impl GoManager {
             download_path.display()
         ));
 
+        let is_tar = version.filename.ends_with(".tar.gz");
+        self.download_archive(version, &download_path, is_tar, &progress)
+            .await?;
+
+        if target_dir.exists() {
+            fs::remove_dir_all(&target_dir)?;
+        }
+        fs::create_dir_all(&target_dir)?;
+
+        let dl_path_clone = download_path.clone();
+        let target_dir_clone = target_dir.clone();
+
+        // The archive is fully on disk, so the blocking extraction work moves
+        // onto the blocking pool instead of stalling the async runtime.
+        let extraction = tokio::task::spawn_blocking(move || {
+            archive::extract_archive(&dl_path_clone, &target_dir_clone, is_tar)
+        })
+        .await
+        .map_err(|e| GovmError::Extraction(e.to_string()))?;
+
+        if let Err(e) = &extraction {
+            logging::error(&format!("install failed: go{}: {e}", version.raw_version));
+        }
+        extraction?;
+
+        logging::info(&format!(
+            "install complete: go{} -> {}",
+            version.raw_version,
+            target_dir.display()
+        ));
+        Ok(target_dir)
+    }
+
+    /// Streams the archive for `version` to `download_path`, reporting live
+    /// progress, then validates the payload's magic bytes before extraction.
+    ///
+    /// # Arguments
+    /// * `version` - The version metadata to install.
+    /// * `download_path` - Destination file the archive is streamed into.
+    /// * `is_tar` - Whether a `.tar.gz` (true) or `.zip` payload is expected.
+    /// * `progress` - Callback invoked with [`InstallProgress`] events.
+    ///
+    /// # Errors
+    /// Returns [`GovmError`] on download failure, IO interruption, or an
+    /// unexpected (non-archive) payload.
+    async fn download_archive<F>(
+        &self,
+        version: &GoVersion,
+        download_path: &Path,
+        is_tar: bool,
+        progress: &F,
+    ) -> Result<(), GovmError>
+    where
+        F: Fn(InstallProgress),
+    {
         let res = self.client.get(&version.url).send().await?;
         let status = res.status();
         let final_url = res.url().clone(); // where we *actually* ended up
@@ -81,7 +136,7 @@ impl GoManager {
         let mut smoothed_speed: f64 = 0.0;
         let mut last_pct_reported: u8 = 0;
 
-        let mut file = tokio::fs::File::create(&download_path).await?;
+        let mut file = tokio::fs::File::create(download_path).await?;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
             file.write_all(&chunk).await?;
@@ -92,6 +147,9 @@ impl GoManager {
             let now = Instant::now();
             let elapsed = now.duration_since(last_report).as_secs_f64();
             if elapsed >= 0.25 || total_size == 0 {
+                // Byte deltas stay far below 2^53, so the f64 cast cannot lose
+                // precision for any realistic download.
+                #[allow(clippy::cast_precision_loss)]
                 let instant_speed = (downloaded - last_bytes) as f64 / elapsed.max(1e-3);
                 // Exponential moving average for a smoother speed readout.
                 smoothed_speed = if smoothed_speed == 0.0 {
@@ -100,6 +158,13 @@ impl GoManager {
                     smoothed_speed * 0.6 + instant_speed * 0.4
                 };
 
+                // The ratio is bounded to 0..=100 by construction, so the u8
+                // cast can neither truncate meaningfully nor flip the sign.
+                #[allow(
+                    clippy::cast_precision_loss,
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss
+                )]
                 let pct = if total_size > 0 {
                     ((downloaded as f64 / total_size as f64) * 100.0) as u8
                 } else {
@@ -129,7 +194,7 @@ impl GoManager {
         // Forensic breadcrumb: what did we ACTUALLY save? `1f 8b` = real gzip;
         // `3c 68 74 6d` ("<htm") = HTML error page; plain tar bytes = something
         // pre-decoded our stream.
-        if let Ok(mut probe) = File::open(&download_path) {
+        if let Ok(mut probe) = File::open(download_path) {
             let mut head = [0u8; 16];
             if let Ok(n) = probe.read(&mut head) {
                 let hex: Vec<String> = head[..n].iter().map(|b| format!("{b:02x}")).collect();
@@ -151,8 +216,7 @@ impl GoManager {
         });
         progress(InstallProgress::Extracting);
 
-        let is_tar = version.filename.ends_with(".tar.gz");
-        let head = archive::read_head(&download_path, 16);
+        let head = archive::read_head(download_path, 16);
         if let Some(bytes) = &head {
             let hex: Vec<String> = bytes.iter().map(|b| format!("{b:02x}")).collect();
             logging::debug(&format!("archive head: {}", hex.join(" ")));
@@ -160,35 +224,9 @@ impl GoManager {
         archive::check_archive_magic(
             head.as_deref().unwrap_or_default(),
             is_tar,
-            &final_url.to_string(),
+            final_url.as_str(),
         )?;
 
-        if target_dir.exists() {
-            fs::remove_dir_all(&target_dir)?;
-        }
-        fs::create_dir_all(&target_dir)?;
-
-        let dl_path_clone = download_path.clone();
-        let target_dir_clone = target_dir.clone();
-
-        // The archive is fully on disk, so the blocking extraction work moves
-        // onto the blocking pool instead of stalling the async runtime.
-        let extraction = tokio::task::spawn_blocking(move || {
-            archive::extract_archive(&dl_path_clone, &target_dir_clone, is_tar)
-        })
-        .await
-        .map_err(|e| GovmError::Extraction(e.to_string()))?;
-
-        if let Err(e) = &extraction {
-            logging::error(&format!("install failed: go{}: {e}", version.raw_version));
-        }
-        extraction?;
-
-        logging::info(&format!(
-            "install complete: go{} -> {}",
-            version.raw_version,
-            target_dir.display()
-        ));
-        Ok(target_dir)
+        Ok(())
     }
 }

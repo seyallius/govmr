@@ -4,12 +4,12 @@
 use super::widgets::tilde_path;
 use crate::{app::AppState, logging, theme::Theme};
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::Modifier,
     style::Style,
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
-    Frame,
 };
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
@@ -127,9 +127,10 @@ fn render_log_statusline(frame: &mut Frame, area: Rect, state: &AppState, theme:
     } else {
         Span::styled(" ", theme.muted())
     };
-    let path = logging::default_log_path()
-        .map(|p| tilde_path(&p.to_string_lossy()))
-        .unwrap_or_else(|| "~/.govmr/govmr.log".to_string());
+    let path = logging::default_log_path().map_or_else(
+        || "~/.govmr/govmr.log".to_string(),
+        |p| tilde_path(&p.to_string_lossy()),
+    );
     let hints = if state.log_focus {
         " ↑↓ scroll · pgup/dn · g/G ends · f follow · w wrap · ` dashboard · L close"
     } else {

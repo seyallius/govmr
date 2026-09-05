@@ -2,7 +2,7 @@
 
 use crate::manager::InstallProgress;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
@@ -13,6 +13,14 @@ pub(crate) struct CliProgress {
     spin_style: ProgressStyle,
 }
 impl CliProgress {
+    /// Locks the shared indicator, recovering from a poisoned lock: a panic
+    /// elsewhere must never take the CLI down with it.
+    fn lock_indicator(&self) -> MutexGuard<'_, Option<ProgressBar>> {
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     pub(crate) fn new(bar_style: ProgressStyle, spin_style: ProgressStyle) -> Self {
         Self {
             inner: Mutex::new(None),
@@ -22,7 +30,7 @@ impl CliProgress {
     }
 
     pub(crate) fn on_event(&self, event: InstallProgress) {
-        let mut guard = self.inner.lock().unwrap();
+        let mut guard = self.lock_indicator();
         match event {
             InstallProgress::Downloading {
                 downloaded, total, ..
@@ -57,7 +65,7 @@ impl CliProgress {
     }
 
     pub(crate) fn finish(&self) {
-        if let Some(pb) = self.inner.lock().unwrap().as_ref() {
+        if let Some(pb) = self.lock_indicator().as_ref() {
             pb.finish_and_clear();
         }
     }

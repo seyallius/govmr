@@ -12,6 +12,10 @@ use std::{
 /// gzip archives begin with `1f 8b`, zip archives with `50 4b` ("PK"). Anything
 /// else — most commonly an HTML error or proxy page — is rejected *before*
 /// extraction so users get an actionable error instead of "invalid gzip header".
+///
+/// # Errors
+/// Returns [`GovmError::NotAnArchive`] when the payload does not start with
+/// the expected magic bytes.
 pub fn check_archive_magic(head: &[u8], is_tar: bool, url: &str) -> Result<(), GovmError> {
     let magic: &[u8] = if is_tar { &[0x1f, 0x8b] } else { &[0x50, 0x4b] };
     if head.len() >= 2 && &head[..2] == magic {

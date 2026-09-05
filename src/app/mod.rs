@@ -78,7 +78,7 @@ impl App {
         }
     }
 
-    /// Asynchronously refreshes the version list from the GoManager.
+    /// Asynchronously refreshes the version list from the `GoManager`.
     #[deprecated(
         since = "1.0.0",
         note = "This method is obsolete - version fetching is now handled by background tasks via handle_actions"
@@ -107,16 +107,19 @@ impl App {
     }
 
     /// Whether a background task is currently blocking new actions.
+    #[must_use]
     pub fn is_busy(&self) -> bool {
         self.state.busy.is_some()
     }
 
     /// Returns indices into [`AppState::versions`] visible under the current tab and filter.
+    #[must_use]
     pub fn visible_indices(&self) -> Vec<usize> {
         visible_indices(&self.state)
     }
 
     /// Returns the currently selected [`GoVersion`], honoring tab and filter visibility.
+    #[must_use]
     pub fn selected_version(&self) -> Option<&GoVersion> {
         let visible = self.visible_indices();
         let pos = self.state.list_state.selected()?;
@@ -172,7 +175,7 @@ impl App {
         let stale = self
             .state
             .log_refreshed
-            .map_or(true, |t| t.elapsed() >= Duration::from_millis(500));
+            .is_none_or(|t| t.elapsed() >= Duration::from_millis(500));
         if stale {
             self.refresh_logs();
         }
@@ -182,6 +185,13 @@ impl App {
     /// history, negative moves down toward newer entries.
     pub fn scroll_logs(&mut self, delta: i64) {
         let max = self.state.log_lines.len().saturating_sub(1);
+        // The i64 round-trip safely applies a signed delta; the clamp keeps
+        // the result non-negative, so the final cast can never go wrong.
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_possible_wrap,
+            clippy::cast_sign_loss
+        )]
         let next = (self.state.log_scroll as i64 + delta).clamp(0, max as i64) as usize;
         self.state.log_scroll = next;
         // Following only makes sense while pinned to the newest entry.
@@ -208,11 +218,19 @@ impl App {
     }
 
     /// Returns the theme currently highlighted in the picker.
+    #[must_use]
     pub fn picker_theme(&self) -> ThemeName {
         ThemeName::ALL[self.state.theme_picker_index]
     }
 
     /// Moves the picker cursor up/down and live-previews the theme.
+    // The picker list holds a handful of fixed entries, so the i32 round-trip
+    // cannot overflow or truncate in practice.
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap,
+        clippy::cast_sign_loss
+    )]
     pub fn picker_move(&mut self, delta: i32) {
         let len = ThemeName::ALL.len() as i32;
         let mut i = self.state.theme_picker_index as i32 + delta;
@@ -238,7 +256,7 @@ impl App {
                 );
             }
             Err(e) => {
-                self.set_status(format!("Could not save theme: {}", e), MsgKind::Error);
+                self.set_status(format!("Could not save theme: {e}"), MsgKind::Error);
             }
         }
         self.state.show_theme_picker = false;

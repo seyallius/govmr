@@ -22,7 +22,7 @@ use std::io;
 ///
 /// # Errors
 /// Returns [`io::Error`] if terminal rendering or event polling fails.
-pub async fn run_setup_guide_if_needed<B: Backend>(
+pub fn run_setup_guide_if_needed<B: Backend>(
     terminal: &mut Terminal<B>,
     shim_path: &str,
     shim_in_path: bool,
@@ -37,48 +37,48 @@ pub async fn run_setup_guide_if_needed<B: Backend>(
     loop {
         terminal
             .draw(|f| draw_setup_modal(f, f.area(), shim_path, theme, local_notice.as_deref()))?;
-        if let Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Press {
-                if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
-                    return Ok(false);
-                }
-                if key.code == KeyCode::Char('q') {
-                    return Ok(false);
-                }
-                if key.code == KeyCode::Char('f') {
-                    match manager.fix_path_permanently() {
-                        Ok(lines) => {
-                            local_notice = Some(
-                                lines
-                                    .into_iter()
-                                    .enumerate()
-                                    .map(|(i, line)| {
-                                        if i == 1 {
-                                            Line::from(Span::styled(line, theme.brand_bold()))
-                                        } else if i == 0 {
-                                            Line::from(Span::styled(line, theme.success()))
-                                        } else {
-                                            Line::from(Span::styled(line, theme.muted()))
-                                        }
-                                    })
-                                    .collect(),
-                            );
-                        }
-                        Err(e) => {
-                            local_notice = Some(vec![
-                                Line::from(Span::styled(
-                                    "Failed to fix PATH:".to_string(),
-                                    theme.error(),
-                                )),
-                                Line::from(Span::styled(format!("  {}", e), theme.muted())),
-                            ]);
-                        }
-                    }
-                    continue; // Stay in the loop to show the result
-                }
-                // ANY other key press closes the modal and proceeds to the app
-                return Ok(true);
+        if let Event::Key(key) = event::read()?
+            && key.kind == KeyEventKind::Press
+        {
+            if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                return Ok(false);
             }
+            if key.code == KeyCode::Char('q') {
+                return Ok(false);
+            }
+            if key.code == KeyCode::Char('f') {
+                match manager.fix_path_permanently() {
+                    Ok(lines) => {
+                        local_notice = Some(
+                            lines
+                                .into_iter()
+                                .enumerate()
+                                .map(|(i, line)| {
+                                    if i == 1 {
+                                        Line::from(Span::styled(line, theme.brand_bold()))
+                                    } else if i == 0 {
+                                        Line::from(Span::styled(line, theme.success()))
+                                    } else {
+                                        Line::from(Span::styled(line, theme.muted()))
+                                    }
+                                })
+                                .collect(),
+                        );
+                    }
+                    Err(e) => {
+                        local_notice = Some(vec![
+                            Line::from(Span::styled(
+                                "Failed to fix PATH:".to_string(),
+                                theme.error(),
+                            )),
+                            Line::from(Span::styled(format!("  {e}"), theme.muted())),
+                        ]);
+                    }
+                }
+                continue; // Stay in the loop to show the result
+            }
+            // ANY other key press closes the modal and proceeds to the app
+            return Ok(true);
         }
     }
 }
@@ -127,7 +127,7 @@ pub fn draw_setup_modal(
 /// On Unix, this shows a short `export` one-liner + `f` to persist via govmr itself.
 /// On Windows, this shows a short session one-liner + `f` to fix permanently.
 ///
-/// The verbose (but safe, idempotent) PowerShell script on Windows is intentionally NOT
+/// The verbose (but safe, idempotent) `PowerShell` script on Windows is intentionally NOT
 /// rendered here — pressing `f` runs it in a hidden child process instead,
 /// so nothing long ever overflows the modal.
 fn draw_setup_content(
@@ -150,9 +150,9 @@ fn draw_setup_content(
 
     // Current-session one-liner
     #[cfg(unix)]
-    let session_cmd = format!("export PATH=\"{}:$PATH\"", shim_path);
+    let session_cmd = format!("export PATH=\"{shim_path}:$PATH\"");
     #[cfg(windows)]
-    let session_cmd = format!("$env:PATH+=\";{}\"", shim_path);
+    let session_cmd = format!("$env:PATH+=\";{shim_path}\"");
 
     let session_block = Block::default()
         .borders(Borders::ALL)
@@ -161,9 +161,9 @@ fn draw_setup_content(
         .title(Span::styled(" This session ", theme.muted()));
 
     #[cfg(unix)]
-    let session_display = format!(" $ {} ", session_cmd);
+    let session_display = format!(" $ {session_cmd} ");
     #[cfg(windows)]
-    let session_display = format!(" PS> {} ", session_cmd);
+    let session_display = format!(" PS> {session_cmd} ");
 
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
@@ -207,9 +207,10 @@ fn draw_setup_content(
     }
 
     // Log location hint
-    let log_path = logging::default_log_path()
-        .map(|p| tilde_path(&p.to_string_lossy()))
-        .unwrap_or_else(|| "~/.govmr/govmr.log".to_string());
+    let log_path = logging::default_log_path().map_or_else(
+        || "~/.govmr/govmr.log".to_string(),
+        |p| tilde_path(&p.to_string_lossy()),
+    );
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(" Logs: ", theme.muted()),

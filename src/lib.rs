@@ -1,4 +1,4 @@
-//! GoVMR library crate - exposes the application modules for reuse and testing.
+//! `GoVMR` library crate - exposes the application modules for reuse and testing.
 //!
 //! The crate is organized as a small layered architecture, and dependencies
 //! flow strictly downward:

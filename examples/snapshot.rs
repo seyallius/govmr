@@ -1,11 +1,14 @@
 //! Renders key TUI screens to plain-text + ANSI snapshots for visual inspection.
+
+#![allow(clippy::unwrap_used)]
 use govmr::{
     app::{ActiveTab, AppState, BusyState, Phase},
     theme::{Theme, ThemeName},
     tui::dashboard::{render, render_overlays},
     version::GoVersion,
 };
-use ratatui::{backend::TestBackend, Terminal};
+use ratatui::{Terminal, backend::TestBackend};
+use std::fmt::Write;
 
 fn fixtures() -> Vec<GoVersion> {
     vec![
@@ -70,7 +73,7 @@ fn dump<F: FnOnce(&mut AppState)>(name: &str, configure: F) {
     let area = buffer.area();
 
     let mut out = String::new();
-    out.push_str(&format!("\n===== {} =====\n", name));
+    writeln!(&mut out, "\n===== {name} =====\n").unwrap();
     for y in 0..area.height {
         for x in 0..area.width {
             let cell = &buffer[(x, y)];
@@ -78,7 +81,7 @@ fn dump<F: FnOnce(&mut AppState)>(name: &str, configure: F) {
         }
         out.push('\n');
     }
-    print!("{}", out);
+    print!("{out}");
 }
 
 fn main() {

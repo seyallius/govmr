@@ -1,6 +1,10 @@
 //! Headless smoke tests: render every TUI state into an in-memory buffer and
 //! assert that drawing never panics and key strings appear where expected.
 
+// Tests exist to fail loudly: panicking on a broken setup or a failed helper
+// is exactly the desired behavior, so unwraps are idiomatic here.
+#![allow(clippy::unwrap_used)]
+
 use govmr::{
     app::{ActiveTab, AppState, BusyState, Phase},
     theme::{Theme, ThemeName},

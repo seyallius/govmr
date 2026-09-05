@@ -18,5 +18,5 @@ pub(crate) const RESET: &str = "\x1b[0m";
 
 /// Wraps `text` in a bold, colored span and resets the terminal afterwards.
 pub(crate) fn paint(color: &str, text: &str) -> String {
-    format!("{}{}{}{}", color, BOLD, text, RESET)
+    format!("{color}{BOLD}{text}{RESET}")
 }

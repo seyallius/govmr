@@ -8,21 +8,21 @@ use super::{
     widgets::{right_pad, shorten_path, tilde_path},
 };
 use crate::{
-    app::{visible_indices, ActiveTab, AppState, BusyState},
+    app::{ActiveTab, AppState, BusyState, visible_indices},
     theme::Theme,
     version::GoVersion,
 };
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph, Tabs},
-    Frame,
 };
 
 // ----------------------------------------- Public API ----------------------------------------- //
 
-/// Primary render routine for the GoVMR dashboard interface.
+/// Primary render routine for the `GoVMR` dashboard interface.
 ///
 /// # Arguments
 /// * `frame` - Mutable drawing frame provided by Ratatui.
@@ -42,18 +42,16 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         Span::styled(" — Go Version Manager ", theme.muted()),
     ]);
 
-    let right_title = state
-        .versions
-        .iter()
-        .find(|v| v.active)
-        .map(|v| {
+    let right_title = state.versions.iter().find(|v| v.active).map_or_else(
+        || Line::from(Span::raw("")),
+        |v| {
             Line::from(vec![
                 Span::styled(" active: ", theme.muted()),
                 Span::styled(v.display_name.clone(), theme.badge_active()),
                 Span::raw("  "),
             ])
-        })
-        .unwrap_or_else(|| Line::from(Span::raw("")));
+        },
+    );
 
     let main_block = Block::default()
         .borders(Borders::ALL)
@@ -139,10 +137,10 @@ pub fn render_overlays(frame: &mut Frame, state: &AppState) {
     let size = frame.area();
     let theme = state.theme;
 
-    if let Some(busy) = &state.busy {
-        if matches!(busy, BusyState::Installing { .. }) {
-            render_install_modal(frame, size, busy, state.tick_count, &theme);
-        }
+    if let Some(busy) = &state.busy
+        && matches!(busy, BusyState::Installing { .. })
+    {
+        render_install_modal(frame, size, busy, state.tick_count, &theme);
     }
 
     if state.confirming_delete.is_some() {
@@ -201,7 +199,7 @@ fn render_tabs(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
             Line::from(vec![
                 Span::styled(" ● ", accent_style), // Glowing neon power indicator
                 Span::styled(name, pill_style),
-                Span::styled(format!(" ({}) ", count), count_style),
+                Span::styled(format!(" ({count}) "), count_style),
             ])
         } else {
             // One notch quieter than before: plain gray, no marker glow.
@@ -209,7 +207,7 @@ fn render_tabs(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
             Line::from(vec![
                 Span::styled("  ○ ", dim),
                 Span::styled(name, dim),
-                Span::styled(format!(" ({})  ", count), dim),
+                Span::styled(format!(" ({count})  "), dim),
             ])
         }
     };
@@ -277,11 +275,14 @@ fn render_content(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &T
             "0000", "0001", "0010", "0011", "0100", "0101", "0110", "0111", "1000", "1001", "1010",
             "1011", "1100", "1101", "1110", "1111",
         ];
-        let spinner_char = center_spinner[(state.tick_count as usize) % center_spinner.len()];
+        // The modulo keeps the index inside the frame table on any pointer width.
+        #[allow(clippy::cast_possible_truncation)]
+        let spinner_idx = (state.tick_count as usize) % center_spinner.len();
+        let spinner_char = center_spinner[spinner_idx];
 
         frame.render_widget(
             Paragraph::new(Line::from(vec![
-                Span::styled(format!(" {} ", spinner_char), theme.brand_bold()),
+                Span::styled(format!(" {spinner_char} "), theme.brand_bold()),
                 Span::styled("Fetching Go releases, please wait...", theme.highlight()),
             ]))
             .alignment(Alignment::Center),
@@ -350,7 +351,7 @@ fn available_line(v: &GoVersion, width: u16, theme: &Theme) -> Line<'static> {
 
     match GoVersion::prerelease_tag(&v.raw_version) {
         Some(tag) if !v.stable => {
-            spans.push(Span::styled(format!("[{}]", tag), theme.badge_unstable()));
+            spans.push(Span::styled(format!("[{tag}]"), theme.badge_unstable()));
         }
         _ => {
             spans.push(Span::styled("[stable]", theme.success()));
@@ -407,8 +408,8 @@ fn content_block(theme: &Theme) -> Block<'static> {
 fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
     let hint = |key: &'static str, label: &'static str| {
         vec![
-            Span::styled(format!(" {} ", key), theme.key_hint()),
-            Span::styled(format!("{} ", label), theme.muted()),
+            Span::styled(format!(" {key} "), theme.key_hint()),
+            Span::styled(format!("{label} "), theme.muted()),
         ]
     };
 

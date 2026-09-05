@@ -48,6 +48,7 @@ impl Level {
 // ----------------------------------------- Public API ----------------------------------------- //
 
 /// Returns the default log file location: `~/.govmr/govmr.log`.
+#[must_use]
 pub fn default_log_path() -> Option<PathBuf> {
     dirs::home_dir().map(|home| home.join(".govmr").join("govmr.log"))
 }
@@ -56,6 +57,7 @@ pub fn default_log_path() -> Option<PathBuf> {
 ///
 /// Best-effort: yields an empty list when the log doesn't exist yet or can't
 /// be read, which the TUI log viewer renders as "no entries yet".
+#[must_use]
 pub fn read_lines() -> Vec<String> {
     let Some(path) = default_log_path() else {
         return Vec::new();
@@ -88,11 +90,11 @@ pub fn init_in(path: &Path) {
 /// `<path>` becomes `<path>.old` (overwriting any previous rotation). Files at or
 /// under [`MAX_LOG_BYTES`] are left untouched.
 pub fn rotate_if_oversized(path: &Path) {
-    if let Ok(meta) = fs::metadata(path) {
-        if meta.len() > MAX_LOG_BYTES {
-            let old = path.with_extension("log.old");
-            let _ = fs::rename(path, old);
-        }
+    if let Ok(meta) = fs::metadata(path)
+        && meta.len() > MAX_LOG_BYTES
+    {
+        let old = path.with_extension("log.old");
+        let _ = fs::rename(path, old);
     }
 }
 
@@ -111,22 +113,22 @@ pub fn log(level: Level, message: &str) {
 
 /// Logs a routine operational event.
 pub fn info(message: &str) {
-    log(Level::Info, message)
+    log(Level::Info, message);
 }
 
 /// Logs an unusual but non-fatal situation.
 pub fn warn(message: &str) {
-    log(Level::Warn, message)
+    log(Level::Warn, message);
 }
 
 /// Logs a failed operation.
 pub fn error(message: &str) {
-    log(Level::Error, message)
+    log(Level::Error, message);
 }
 
 /// Logs verbose diagnostics for debugging.
 pub fn debug(message: &str) {
-    log(Level::Debug, message)
+    log(Level::Debug, message);
 }
 
 // -------------------------------------- Internal Helpers -------------------------------------- //
@@ -145,7 +147,8 @@ fn open_log(path: &Path) -> Option<File> {
 fn timestamp() -> String {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
+        // Saturates instead of wrapping; epoch seconds never reach i64::MAX.
+        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
         .unwrap_or(0);
     format_unix(secs)
 }
@@ -157,7 +160,7 @@ fn timestamp() -> String {
 fn format_unix(total_secs: i64) -> String {
     let days = total_secs.div_euclid(86_400);
     let secs = total_secs.rem_euclid(86_400);
-    let (h, mi, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
+    let (hour, minute, second) = (secs / 3600, (secs % 3600) / 60, secs % 60);
 
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
@@ -166,9 +169,9 @@ fn format_unix(total_secs: i64) -> String {
     let base_year = yoe + era * 400;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { base_year + 1 } else { base_year };
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if month <= 2 { base_year + 1 } else { base_year };
 
-    format!("{y:04}-{m:02}-{d:02} {h:02}:{mi:02}:{s:02}Z")
+    format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}Z")
 }

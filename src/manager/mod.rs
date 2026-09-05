@@ -76,7 +76,12 @@ impl GoManager {
 
     /// Returns the user's currently selected color theme.
     pub fn theme_name(&self) -> ThemeName {
-        self.config.lock().expect("config lock").theme
+        // A poisoned lock only means another thread panicked mid-update; the
+        // config value itself is still readable.
+        self.config
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .theme
     }
 
     /// Returns the concrete palette for the currently selected theme.
@@ -85,8 +90,14 @@ impl GoManager {
     }
 
     /// Persists a new color-theme choice and returns the resulting palette.
+    ///
+    /// # Errors
+    /// Returns [`GovmError::Io`] if the updated configuration cannot be persisted.
     pub fn set_theme(&self, theme: ThemeName) -> Result<Theme, GovmError> {
-        self.config.lock().expect("config lock").set_theme(theme)?;
+        self.config
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_theme(theme)?;
         logging::info(&format!("theme set: {}", theme.key()));
         Ok(Theme::for_name(theme))
     }
@@ -143,13 +154,13 @@ impl GoManager {
                 .into_iter()
                 .find(|f| f.os == go_os && f.arch == go_arch)
             {
-                let install_dir = self.versions_dir.join(format!("go{}", ver_clean));
+                let install_dir = self.versions_dir.join(format!("go{ver_clean}"));
                 let installed = install_dir.join("bin").exists();
                 let active = active_version.as_deref() == Some(&ver_clean);
 
                 versions.push(GoVersion {
                     raw_version: ver_clean.clone(),
-                    display_name: format!("go{}", ver_clean),
+                    display_name: format!("go{ver_clean}"),
                     filename: file.filename.clone(),
                     url: format!("https://go.dev/dl/{}", file.filename),
                     size: file.size as u64,
@@ -170,6 +181,10 @@ impl GoManager {
     ///
     /// # Returns
     /// Returns `true` if the shim directory is correctly configured in system `PATH`.
+    ///
+    /// # Errors
+    /// Returns [`GovmError`] if shim generation or the active-version file
+    /// write fails, or [`GovmError::NotInstalled`] if the version has no local path.
     pub fn switch_version(&self, version: &GoVersion) -> Result<bool, GovmError> {
         let version_path = version
             .path
@@ -202,10 +217,10 @@ impl GoManager {
         if version.active {
             return Err(GovmError::CannotDeleteActive(version.raw_version.clone()));
         }
-        if let Some(path) = &version.path {
-            if path.exists() {
-                fs::remove_dir_all(path)?;
-            }
+        if let Some(path) = &version.path
+            && path.exists()
+        {
+            fs::remove_dir_all(path)?;
         }
         logging::info(&format!("delete: removed go{}", version.raw_version));
         Ok(())
@@ -215,7 +230,7 @@ impl GoManager {
     /// hidden child process and returns a human-readable summary of
     /// exactly what was done, so the UI can reassure the user.
     ///
-    /// * **Windows**: runs an idempotent PowerShell snippet that appends the
+    /// * **Windows**: runs an idempotent `PowerShell` snippet that appends the
     ///   shim dir to the *User* PATH (no `setx`, so no 1024-char truncation).
     ///   Only takes effect in *new* terminal sessions (Windows limitation).
     /// * **Unix**: appends an `export PATH=...` line to the detected shell
@@ -289,13 +304,13 @@ impl GoManager {
                 ]);
             }
 
-            let source_path = format!("export PATH=\"{}:$PATH\"", shim);
+            let source_path = format!("export PATH=\"{shim}:$PATH\"");
             let mut file = fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(&profile)?;
-            writeln!(file, "")?;
-            writeln!(file, "{}", marker)?;
+            writeln!(file)?;
+            writeln!(file, "{marker}")?;
             writeln!(file, "{source_path}")?;
 
             logging::info(&format!(

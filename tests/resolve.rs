@@ -1,12 +1,16 @@
 //! Tests for semver-aware version query resolution (the prefix-matching bug).
 
+// Tests exist to fail loudly: panicking on a broken setup or a failed helper
+// is exactly the desired behavior, so unwraps are idiomatic here.
+#![allow(clippy::unwrap_used)]
+
 use govmr::version::{GoVersion, resolve_version, version_matches};
 
 fn gv(raw: &str, stable: bool) -> GoVersion {
     GoVersion {
         raw_version: raw.to_string(),
-        display_name: format!("go{}", raw),
-        filename: format!("go{}.tar.gz", raw),
+        display_name: format!("go{raw}"),
+        filename: format!("go{raw}.tar.gz"),
         url: String::new(),
         size: 0,
         installed: false,

@@ -1,6 +1,6 @@
 //! Module status - Bottom status bar rendering: busy states, filter editing, and messages.
 
-use super::widgets::spinner_span;
+use super::widgets::{download_percent, spinner_span};
 use crate::{
     app::{ActiveTab, AppState, BusyState, MsgKind, Phase},
     theme::Theme,
@@ -41,11 +41,11 @@ pub(crate) fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState,
             ]),
             BusyState::Switching(v) => Line::from(vec![
                 spinner_span(state.tick_count, theme),
-                Span::styled(format!(" Switching to Go {}…", v), theme.highlight()),
+                Span::styled(format!(" Switching to Go {v}…"), theme.highlight()),
             ]),
             BusyState::Deleting(v) => Line::from(vec![
                 spinner_span(state.tick_count, theme),
-                Span::styled(format!(" Removing Go {}…", v), theme.warning()),
+                Span::styled(format!(" Removing Go {v}…"), theme.warning()),
             ]),
             BusyState::Installing {
                 version,
@@ -55,29 +55,31 @@ pub(crate) fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState,
                 speed,
                 ..
             } => {
-                let pct = if *total > 0 {
-                    (*downloaded as f64 / *total as f64 * 100.0).min(100.0)
-                } else {
-                    0.0
-                };
+                let pct = download_percent(*downloaded, *total);
                 match phase {
-                    Phase::Downloading => Line::from(vec![
-                        spinner_span(state.tick_count, theme),
-                        Span::styled(format!(" Downloading Go {} ", version), theme.highlight()),
-                        Span::styled(
-                            format!(
-                                "{:.0}%  ({}/{}) {}/s",
-                                pct,
-                                GoVersion::format_size(*downloaded),
-                                GoVersion::format_size(*total),
-                                GoVersion::format_size(*speed as u64),
+                    Phase::Downloading => {
+                        // Download speed is always non-negative; truncation
+                        // drops at most a single byte.
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        let speed_bps = *speed as u64;
+                        Line::from(vec![
+                            spinner_span(state.tick_count, theme),
+                            Span::styled(format!(" Downloading Go {version} "), theme.highlight()),
+                            Span::styled(
+                                format!(
+                                    "{:.0}%  ({}/{}) {}/s",
+                                    pct,
+                                    GoVersion::format_size(*downloaded),
+                                    GoVersion::format_size(*total),
+                                    GoVersion::format_size(speed_bps),
+                                ),
+                                theme.muted(),
                             ),
-                            theme.muted(),
-                        ),
-                    ]),
+                        ])
+                    }
                     Phase::Extracting => Line::from(vec![
                         spinner_span(state.tick_count, theme),
-                        Span::styled(format!(" Unpacking Go {}…", version), theme.highlight()),
+                        Span::styled(format!(" Unpacking Go {version}…"), theme.highlight()),
                     ]),
                 }
             }
@@ -93,7 +95,7 @@ pub(crate) fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState,
             MsgKind::Info => ("ℹ", theme.highlight()),
         };
         let line = Line::from(vec![
-            Span::styled(format!(" {} ", icon), style.add_modifier(Modifier::BOLD)),
+            Span::styled(format!(" {icon} "), style.add_modifier(Modifier::BOLD)),
             Span::styled(msg.text.clone(), style),
         ]);
         frame.render_widget(Paragraph::new(line).block(block), area);
@@ -110,7 +112,7 @@ pub(crate) fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState,
     };
     frame.render_widget(
         Paragraph::new(Line::from(vec![Span::styled(
-            format!(" {}", hint),
+            format!(" {hint}"),
             theme.muted(),
         )]))
         .block(block),

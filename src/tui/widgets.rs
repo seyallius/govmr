@@ -22,7 +22,10 @@ pub(crate) fn clear_area(frame: &mut Frame, area: Rect, theme: &Theme) {
 
 /// Returns the current braille spinner glyph for the given animation tick.
 fn spinner_frame(tick: u64) -> &'static str {
-    SPINNER[(tick as usize) % SPINNER.len()]
+    // The modulo keeps the index in bounds regardless of pointer width.
+    #[allow(clippy::cast_possible_truncation)]
+    let idx = (tick as usize) % SPINNER.len();
+    SPINNER[idx]
 }
 
 /// A styled, animated spinner span (with a leading space).
@@ -44,13 +47,27 @@ pub(crate) fn tilde_path(path: &str) -> String {
         Some(home) => {
             let home = home.to_string_lossy();
             if let Some(rest) = path.strip_prefix(home.as_ref()) {
-                format!("~{}", rest)
+                format!("~{rest}")
             } else {
                 path.to_string()
             }
         }
         None => path.to_string(),
     }
+}
+
+/// Percentage of a download completed, clamped to `0.0..=100.0`, or `0.0`
+/// when the total size is unknown.
+pub(crate) fn download_percent(downloaded: u64, total: u64) -> f64 {
+    // Byte counters stay far below 2^53 for any realistic archive, so the
+    // f64 casts cannot lose precision in practice.
+    #[allow(clippy::cast_precision_loss)]
+    let pct = if total > 0 {
+        (downloaded as f64 / total as f64 * 100.0).min(100.0)
+    } else {
+        0.0
+    };
+    pct
 }
 
 /// Truncates a path from the left (keeping the tail) if it exceeds `max` characters.
@@ -60,7 +77,7 @@ pub(crate) fn shorten_path(path: &str, max: usize) -> String {
         path.to_string()
     } else {
         let tail: String = chars[chars.len() - (max - 1)..].iter().collect();
-        format!("…{}", tail)
+        format!("…{tail}")
     }
 }
 

@@ -1,4 +1,8 @@
 //! Module logging. Verifies the operation logger writes formatted,
+
+// Tests exist to fail loudly: panicking on a broken setup or a failed helper
+// is exactly the desired behavior, so unwraps are idiomatic here.
+#![allow(clippy::unwrap_used)]
 //! timestamped lines and rotates oversized logs, using throwaway temp directories.
 
 use govmr::logging;

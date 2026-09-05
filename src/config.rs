@@ -33,6 +33,7 @@ pub struct Config {
 impl Config {
     /// Loads configuration from `<base_dir>/config.toml`, falling back to (and
     /// migrating) the legacy `<base_dir>/config` key/value file if present.
+    #[must_use]
     pub fn load(base_dir: &std::path::Path) -> Self {
         let path = base_dir.join("config.toml");
         let legacy = base_dir.join("config");
@@ -56,15 +57,18 @@ impl Config {
     /// Persists a new theme choice to `config.toml`.
     ///
     /// # Errors
-    /// Returns an IO error if the file cannot be written.
+    /// Returns an IO error if the config cannot be serialized or the file
+    /// cannot be written.
     pub fn set_theme(&mut self, theme: ThemeName) -> std::io::Result<()> {
         self.theme = theme;
         let cfg = ConfigFile {
             theme: theme.key().to_string(),
         };
+        // The config is a plain string key, so serialization cannot fail in
+        // practice; the mapping keeps the signature panic-free either way.
         let body = format!(
             "# GoVMR user preferences\n# Re-generate with `govmr theme <name>` or press T in the TUI.\n\n{}\n",
-            toml::to_string(&cfg).expect("config serializes")
+            toml::to_string(&cfg).map_err(std::io::Error::other)?
         );
         std::fs::write(&self.path, body)
     }

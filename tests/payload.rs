@@ -1,6 +1,10 @@
 //! Module payload. Ensures non-archive payloads (like the HTML page
 //! that caused the "invalid gzip header" incident) are rejected before extraction.
 
+// Tests exist to fail loudly: panicking on a broken setup or a failed helper
+// is exactly the desired behavior, so unwraps are idiomatic here.
+#![allow(clippy::unwrap_used)]
+
 use govmr::errors::GovmError;
 use govmr::manager::check_archive_magic;
 

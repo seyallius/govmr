@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
-/// Normalized representation of a Go version within GoVMR.
+/// Normalized representation of a Go version within `GoVMR`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GoVersion {
     /// Stripped numeric version string (e.g., `1.22.0`).
@@ -36,14 +36,12 @@ impl GoVersion {
     /// Extracts the pre-release / unstable suffix of a version, if any.
     ///
     /// For example `1.24rc1` yields `Some("rc1")` and `1.22.0` yields `None`.
+    #[must_use]
     pub fn prerelease_tag(raw: &str) -> Option<String> {
-        let tag = raw
-            .split('.')
-            .filter_map(|part| {
-                let idx = part.find(|c: char| c.is_ascii_alphabetic())?;
-                Some(part[idx..].trim())
-            })
-            .next()?;
+        let tag = raw.split('.').find_map(|part| {
+            let idx = part.find(|c: char| c.is_ascii_alphabetic())?;
+            Some(part[idx..].trim())
+        })?;
         if tag.is_empty() {
             None
         } else {
@@ -52,8 +50,11 @@ impl GoVersion {
     }
 
     /// Formats a byte count into a compact, human-readable string (e.g. `72.4 MB`).
+    #[must_use]
     pub fn format_size(bytes: u64) -> String {
         const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
+        // Exact byte counts are uninteresting beyond the one decimal shown.
+        #[allow(clippy::cast_precision_loss)]
         let mut value = bytes as f64;
         let mut unit = 0;
         while value >= 1024.0 && unit < UNITS.len() - 1 {

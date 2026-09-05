@@ -19,6 +19,7 @@ pub enum ActiveTab {
 }
 impl ActiveTab {
     /// Flips to the other tab.
+    #[must_use]
     pub fn toggle(self) -> Self {
         match self {
             ActiveTab::Available => ActiveTab::Installed,
@@ -83,6 +84,7 @@ pub enum BusyState {
 }
 impl BusyState {
     /// Returns the version targeted by the busy operation, if any.
+    #[must_use]
     pub fn target(&self) -> Option<&str> {
         match self {
             BusyState::Refreshing => None,
@@ -94,6 +96,9 @@ impl BusyState {
 }
 
 /// Holds all state variables required for rendering and interacting with the TUI.
+// A flat bag of independent UI toggles: they combine freely, so neither a
+// state machine nor grouped bool enums would model them more accurately.
+#[allow(clippy::struct_excessive_bools)]
 pub struct AppState {
     /// Full list of available and installed versions.
     pub versions: Vec<GoVersion>,
@@ -107,7 +112,7 @@ pub struct AppState {
     pub status_message: Option<StatusMessage>,
     /// Targeted version pending user deletion confirmation.
     pub confirming_delete: Option<String>,
-    /// Indicates whether the GoVMR shim path is configured in system `PATH`.
+    /// Indicates whether the `GoVMR` shim path is configured in system `PATH`.
     pub is_shim_in_path: bool,
     /// Filesystem path to the shim directory (shown in the help overlay).
     pub shim_path: String,
@@ -147,6 +152,7 @@ pub struct AppState {
 }
 impl AppState {
     /// Constructs a fresh state for the supplied version list (used by tests/setup).
+    #[must_use]
     pub fn from_versions(versions: Vec<GoVersion>, is_shim_in_path: bool) -> Self {
         let mut list_state = ListState::default();
         if !versions.is_empty() {
@@ -182,6 +188,7 @@ impl AppState {
     }
 
     /// Returns indices into `versions` visible under the current tab and filter.
+    #[must_use]
     pub fn visible_indices(&self) -> Vec<usize> {
         visible_indices(self)
     }
@@ -191,9 +198,8 @@ impl AppState {
         let len = self.visible_indices().len();
         match self.list_state.selected() {
             Some(i) if len > 0 && i >= len => self.list_state.select(Some(len - 1)),
-            Some(_) => {}
             None if len > 0 => self.list_state.select(Some(0)),
-            None => {}
+            Some(_) | None => {}
         }
     }
 
@@ -228,6 +234,7 @@ impl AppState {
 // ----------------------------------------- Public API ----------------------------------------- //
 
 /// Returns indices into [`AppState::versions`] visible under the given state's tab and filter.
+#[must_use]
 pub fn visible_indices(state: &AppState) -> Vec<usize> {
     let query = state.filter.to_lowercase();
     state

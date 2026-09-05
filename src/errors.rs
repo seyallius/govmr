@@ -1,8 +1,8 @@
-//! Module errors - Domain-specific error types for GoVMR operations.
+//! Module errors - Domain-specific error types for `GoVMR` operations.
 
 use thiserror::Error;
 
-/// Comprehensive error enumeration for GoVMR application lifecycle and runtime failures.
+/// Comprehensive error enumeration for `GoVMR` application lifecycle and runtime failures.
 #[derive(Error, Debug)]
 pub enum GovmError {
     /// Emitted when the user's home directory cannot be resolved from the environment.

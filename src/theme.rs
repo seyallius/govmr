@@ -5,10 +5,11 @@ use std::fmt;
 
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
-/// The selectable color schemes shipped with GoVMR.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// The selectable color schemes shipped with `GoVMR`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum ThemeName {
     /// The default Go-brand cyan look.
+    #[default]
     GoCyan,
     /// Deep indigo on near-black — easy on the eyes for late nights.
     Midnight,
@@ -39,6 +40,7 @@ impl ThemeName {
     ];
 
     /// Short identifier used in the config file and the CLI.
+    #[must_use]
     pub fn key(self) -> &'static str {
         match self {
             ThemeName::GoCyan => "gocyan",
@@ -53,6 +55,7 @@ impl ThemeName {
     }
 
     /// Human-friendly display name.
+    #[must_use]
     pub fn title(self) -> &'static str {
         match self {
             ThemeName::GoCyan => "Go Cyan",
@@ -67,6 +70,7 @@ impl ThemeName {
     }
 
     /// Parses a config/CLI key back into a [`ThemeName`] (case-insensitive).
+    #[must_use]
     pub fn from_key(raw: &str) -> Option<ThemeName> {
         let key = raw.trim().to_lowercase();
         Self::ALL
@@ -80,12 +84,6 @@ impl fmt::Display for ThemeName {
         f.write_str(self.title())
     }
 }
-impl Default for ThemeName {
-    fn default() -> Self {
-        ThemeName::GoCyan
-    }
-}
-
 /// A concrete palette plus derived widget styles.
 #[derive(Clone, Copy)]
 pub struct Theme {
@@ -113,6 +111,7 @@ pub struct Theme {
 }
 impl Theme {
     /// Builds the palette for the named scheme.
+    #[must_use]
     pub fn for_name(name: ThemeName) -> Theme {
         match name {
             ThemeName::GoCyan => Theme {
@@ -215,6 +214,7 @@ impl Theme {
     }
 
     /// Whether this is a light (bright-background) scheme.
+    #[must_use]
     pub fn is_light(&self) -> bool {
         matches!(self.bg, Color::Rgb(r, _, _) if r > 200)
     }
@@ -222,46 +222,55 @@ impl Theme {
     // ------------------------------------------- Styles ------------------------------------------- //
 
     /// Style for focused highlights and secondary brand indicators.
+    #[must_use]
     pub fn highlight(&self) -> Style {
         Style::default().fg(self.brand)
     }
 
     /// Style for success banners, active markers, and positive feedback.
+    #[must_use]
     pub fn success(&self) -> Style {
         Style::default().fg(self.success)
     }
 
     /// Style for error messages, failure alerts, and destructive actions.
+    #[must_use]
     pub fn error(&self) -> Style {
         Style::default().fg(self.error)
     }
 
     /// Style for warning banners and non-fatal notifications.
+    #[must_use]
     pub fn warning(&self) -> Style {
         Style::default().fg(self.warning)
     }
 
     /// Style for primary headers and dialog titles.
+    #[must_use]
     pub fn title(&self) -> Style {
         Style::default().fg(self.brand).add_modifier(Modifier::BOLD)
     }
 
     /// Style for primary container borders.
+    #[must_use]
     pub fn border(&self) -> Style {
         Style::default().fg(self.brand)
     }
 
     /// Style for subtle hints, borders, and footer shortcuts.
+    #[must_use]
     pub fn muted(&self) -> Style {
         Style::default().fg(self.grey)
     }
 
     /// Style for brand-colored bold text.
+    #[must_use]
     pub fn brand_bold(&self) -> Style {
         Style::default().fg(self.brand).add_modifier(Modifier::BOLD)
     }
 
     /// Style for the currently selected list row (inverted brand block).
+    #[must_use]
     pub fn selected_row(&self) -> Style {
         Style::default()
             .fg(self.fg)
@@ -270,6 +279,7 @@ impl Theme {
     }
 
     /// Style for pre-release / unstable version badges.
+    #[must_use]
     pub fn badge_unstable(&self) -> Style {
         Style::default()
             .fg(self.warning)
@@ -277,11 +287,13 @@ impl Theme {
     }
 
     /// Style for the "(installed)" badge.
+    #[must_use]
     pub fn badge_installed(&self) -> Style {
         Style::default().fg(self.accent)
     }
 
     /// Style for the "(active)" badge.
+    #[must_use]
     pub fn badge_active(&self) -> Style {
         Style::default()
             .fg(self.success)
@@ -289,26 +301,31 @@ impl Theme {
     }
 
     /// Style for an inactive tab title.
+    #[must_use]
     pub fn tab_inactive(&self) -> Style {
         Style::default().fg(self.grey)
     }
 
     /// Style for an active tab title.
+    #[must_use]
     pub fn tab_active(&self) -> Style {
         Style::default().fg(self.brand).add_modifier(Modifier::BOLD)
     }
 
     /// Style for key hints in the help footer.
+    #[must_use]
     pub fn key_hint(&self) -> Style {
         Style::default().fg(self.brand).add_modifier(Modifier::BOLD)
     }
 
     /// Style for dim descriptive text inside modals.
+    #[must_use]
     pub fn modal_body(&self) -> Style {
         Style::default().fg(self.fg)
     }
 
     /// Style for quiet chrome: unfocused borders, dividers, the tab underline.
+    #[must_use]
     pub fn dim_border(&self) -> Style {
         Style::default().fg(self.dim)
     }
