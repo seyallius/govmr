@@ -17,7 +17,6 @@ use crate::{
 use std::{
     env::consts::{ARCH, OS},
     fs,
-    io::Write,
     path::PathBuf,
     sync::Mutex,
     time::Duration,
@@ -246,7 +245,7 @@ impl GoManager {
 
         #[cfg(windows)]
         {
-            use std::os::windows::process::CommandExt;
+            use std::{os::windows::process::CommandExt, process};
 
             // Idempotent, truncation-safe User-PATH update. Hidden window so
             // the TUI is never clobbered by a console flash.
@@ -283,6 +282,8 @@ impl GoManager {
 
         #[cfg(unix)]
         {
+            use std::io::Write;
+
             let home = dirs::home_dir().ok_or(GovmError::HomeNotFound)?;
             let profile = match std::env::var("SHELL").unwrap_or_default().as_str() {
                 s if s.ends_with("/zsh") => home.join(".zshrc"),
