@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/seyallius/govmr/compare/v0.3.1...v0.4.0) - 2026-09-06
+
+### Added
+
+- *(theme)* add 11 new themes and group by dark/light
+- *(theme)* two-level dark/light folder picker with live preview
+
+### Fixed
+
+- *(tui)* wipe stale glyphs under modals before painting theme background
+
+### Other
+
+- *(theme)* re-tune JetBrains New Island and Cursor Dark palettes
+- *(clippy)* suppress too_many_lines lint and fix formatting nits
+
 ## [0.3.1](https://github.com/seyallius/govmr/compare/v0.3.0...v0.3.1) - 2026-09-05
 
 ### Fixed
