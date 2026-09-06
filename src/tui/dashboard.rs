@@ -2,7 +2,7 @@
 
 use super::{
     logs::render_log_panel,
-    modals::{render_delete_modal, render_install_modal, render_theme_picker},
+    modals::{render_delete_modal, render_install_modal, render_theme_picker, render_system_prompt},
     setup::draw_setup_modal,
     status::render_status_bar,
     widgets::{right_pad, shorten_path, tilde_path},
@@ -159,6 +159,10 @@ pub fn render_overlays(frame: &mut Frame, state: &AppState) {
 
     if state.show_theme_picker {
         render_theme_picker(frame, size, state, &theme);
+    }
+
+    if let Some(prompt) = state.system_prompt {
+        render_system_prompt(frame, size, prompt, &theme);
     }
 }
 

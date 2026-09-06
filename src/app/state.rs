@@ -110,6 +110,17 @@ pub struct ThemePickerState {
     pub theme_cursor: usize,
 }
 
+/// Tracks pending destructive/system actions requiring confirmation.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SystemPrompt {
+    /// Prompt the user to confirm downloading and applying the latest govmr update.
+    Update,
+    /// Prompt the user to confirm uninstalling the govmr binary while keeping `~/.govmr`.
+    UninstallKeep,
+    /// Prompt the user to confirm uninstalling the govmr binary AND purging `~/.govmr`.
+    UninstallPurge,
+}
+
 /// Holds all state variables required for rendering and interacting with the TUI.
 /// A flat bag of independent UI toggles: they combine freely, so neither a
 /// state machine nor grouped bool enums would model them more accurately.
@@ -164,6 +175,8 @@ pub struct AppState {
     pub log_wrap: bool,
     /// Sender used to signal cancellation of an ongoing installation.
     pub cancel_install: Option<tokio::sync::watch::Sender<bool>>,
+    /// Tracks which system-level confirmation modal (Update/Uninstall) is currently active.
+    pub system_prompt: Option<SystemPrompt>,
 }
 impl AppState {
     /// Constructs a fresh state for the supplied version list (used by tests/setup).
@@ -199,6 +212,7 @@ impl AppState {
             log_focus: false,
             log_wrap: false,
             cancel_install: None,
+            system_prompt: None,
         }
     }
 

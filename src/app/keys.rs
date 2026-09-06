@@ -5,6 +5,7 @@
 //! capture (help, theme picker, delete confirmation, filter mode), then the
 //! main shortcut set.
 
+use crate::app::state::SystemPrompt;
 use crate::{
     app::{Action, App, MsgKind},
     logging,
@@ -13,7 +14,6 @@ use crate::{
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::text::{Line, Span};
 use tokio::sync::mpsc::UnboundedSender;
-
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// How the event loop should proceed after a key has been handled.
@@ -62,6 +62,9 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
     if let Some(outcome) = handle_log_panel_key(key, app) {
         return outcome;
     }
+    if let Some(prompt) = app.state.system_prompt {
+        return handle_system_prompt_key(key, app, action_tx, prompt);
+    }
 
     handle_main_shortcut_key(key, app, action_tx)
 }
@@ -108,6 +111,16 @@ fn handle_help_overlay_key(key: KeyEvent, app: &mut App) -> KeyOutcome {
                     ]);
                 }
             }
+            KeyOutcome::Continue
+        }
+        KeyCode::Char('u') => {
+            app.state.system_prompt = Some(SystemPrompt::Update);
+            app.state.show_help = false; // Close help, show system modal
+            KeyOutcome::Continue
+        }
+        KeyCode::Char('x') => {
+            app.state.system_prompt = Some(SystemPrompt::UninstallKeep);
+            app.state.show_help = false;
             KeyOutcome::Continue
         }
         _ => {
@@ -284,6 +297,40 @@ fn handle_log_panel_key(key: KeyEvent, app: &mut App) -> Option<KeyOutcome> {
         KeyCode::Char('q') => KeyOutcome::Quit,
         _ => KeyOutcome::Continue,
     })
+}
+
+fn handle_system_prompt_key(
+    key: KeyEvent,
+    app: &mut App,
+    action_tx: &UnboundedSender<Action>,
+    prompt: SystemPrompt,
+) -> KeyOutcome {
+    match key.code {
+        KeyCode::Char('y') | KeyCode::Char('Y') => {
+            match prompt {
+                SystemPrompt::Update => {
+                    let _ = action_tx.send(Action::Update);
+                }
+                SystemPrompt::UninstallKeep => {
+                    let _ = action_tx.send(Action::Uninstall(false));
+                }
+                SystemPrompt::UninstallPurge => {
+                    let _ = action_tx.send(Action::Uninstall(true));
+                }
+            }
+            app.state.system_prompt = None;
+        }
+        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+            if prompt == SystemPrompt::UninstallKeep {
+                // Ask if they want to purge instead
+                app.state.system_prompt = Some(SystemPrompt::UninstallPurge);
+            } else {
+                app.state.system_prompt = None;
+            }
+        }
+        _ => {}
+    }
+    KeyOutcome::Continue
 }
 
 /// Handles the main dashboard shortcuts once no modal captured the key.

@@ -52,6 +52,14 @@ pub enum Commands {
         #[arg(value_parser = parse_theme)]
         name: Option<ThemeName>,
     },
+    /// Update govmr to the latest version.
+    Update,
+    /// Uninstall govmr and optionally remove ~/.govmr.
+    Uninstall {
+        /// Also remove the ~/.govmr directory (installed versions, config, logs).
+        #[arg(short, long)]
+        purge: bool,
+    },
 }
 
 // ----------------------------------------- Public API ----------------------------------------- //
@@ -86,6 +94,8 @@ pub async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
         Some(Commands::Delete { version }) => cmd_delete(&manager, &version).await?,
         Some(Commands::List) => cmd_list(&manager).await?,
         Some(Commands::Theme { name }) => cmd_theme(&manager, name)?,
+        Some(Commands::Update) => cmd_update(&manager).await?,
+        Some(Commands::Uninstall { purge }) => cmd_uninstall(&manager, purge).await?,
         None => unreachable!(),
     }
     Ok(())
@@ -253,5 +263,64 @@ fn cmd_theme(manager: &GoManager, name: Option<ThemeName>) -> Result<()> {
             paint(CYAN, "govmr theme midnight")
         );
     }
+    Ok(())
+}
+
+async fn cmd_update(manager: &GoManager) -> Result<()> {
+    println!("{} Checking for updates...", paint(CYAN, "🔍"));
+    match manager.check_for_update().await? {
+        Some(new_version) => {
+            println!(
+                "{} New version {} available! Downloading...",
+                paint(GREEN, "✨"),
+                new_version
+            );
+            manager.perform_update(&new_version).await?;
+            println!(
+                "{} Updated to {}! Please restart govmr.",
+                paint(GREEN, "✅"),
+                new_version
+            );
+        }
+        None => {
+            println!(
+                "{} You are already on the latest version.",
+                paint(GREEN, "✅")
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn cmd_uninstall(manager: &GoManager, purge: bool) -> Result<()> {
+    println!(
+        "{} Are you sure you want to uninstall govmr? [y/N]",
+        paint(YELLOW, "⚠️")
+    );
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    if !input.trim().eq_ignore_ascii_case("y") {
+        println!("Uninstall cancelled.");
+        return Ok(());
+    }
+
+    if purge {
+        println!(
+            "{} This will permanently delete ~/.govmr and all installed Go versions. Are you sure? [y/N]",
+            paint(RED, "🚨")
+        );
+        let mut input2 = String::new();
+        std::io::stdin().read_line(&mut input2)?;
+        if !input2.trim().eq_ignore_ascii_case("y") {
+            println!("Uninstall cancelled.");
+            return Ok(());
+        }
+    }
+
+    manager.uninstall(purge)?;
+    println!(
+        "{} govmr has been uninstalled. Goodbye! 👋",
+        paint(GREEN, "✅")
+    );
     Ok(())
 }

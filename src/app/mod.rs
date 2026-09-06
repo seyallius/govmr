@@ -9,7 +9,7 @@ pub use action::Action;
 pub use actions::handle_actions;
 pub use keys::{KeyOutcome, handle_key};
 pub use state::{
-    ActiveTab, AppState, BusyState, MsgKind, Phase, StatusMessage, ThemePickerState,
+    ActiveTab, AppState, BusyState, MsgKind, Phase, StatusMessage, SystemPrompt, ThemePickerState,
     visible_indices,
 };
 
@@ -72,6 +72,7 @@ impl App {
                 log_focus: false,
                 log_wrap: false,
                 cancel_install: None,
+                system_prompt: None,
             },
             manager,
         }

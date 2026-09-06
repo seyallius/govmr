@@ -40,6 +40,8 @@ pub async fn handle_actions(
             Action::Use(v) => handle_use(app, manager, &v),
             Action::Delete(v) => handle_delete(app, manager, action_tx, &v),
             Action::FixPath => handle_fix_path(app, manager),
+            Action::Update => spawn_update(app, manager, action_tx),
+            Action::Uninstall(purge) => handle_uninstall(app, manager, purge),
         }
     }
     Ok(())
@@ -261,5 +263,52 @@ fn handle_fix_path(app: &mut App, manager: &Arc<GoManager>) {
             logging::error(&format!("fix-path failed: {e}"));
             app.set_status(format!("Could not fix PATH: {e}"), MsgKind::Error);
         }
+    }
+}
+
+// Add to src/app/actions.rs
+fn spawn_update(
+    app: &mut App,
+    manager: &Arc<GoManager>,
+    action_tx: &mpsc::UnboundedSender<Action>,
+) {
+    app.set_status("Checking for updates...", MsgKind::Info);
+    let mgr = manager.clone();
+    let action_tx = action_tx.clone();
+
+    tokio::spawn(async move {
+        match mgr.check_for_update().await {
+            Ok(Some(ver)) => {
+                if let Err(e) = mgr.perform_update(&ver).await {
+                    let _ = action_tx.send(Action::InstallFailed(format!("Update failed: {}", e)));
+                } else {
+                    let _ = action_tx.send(Action::InstallDone(GoVersion {
+                        raw_version: ver,
+                        display_name: "govmr".into(),
+                        filename: "".into(),
+                        url: "".into(),
+                        size: 0,
+                        installed: false,
+                        active: false,
+                        path: None,
+                        stable: true,
+                    })); // Reusing InstallDone for success message hack, or create UpdateDone
+                }
+            }
+            Ok(None) => {
+                // Already up to date
+            }
+            Err(e) => {
+                let _ = action_tx.send(Action::InstallFailed(e.to_string()));
+            }
+        }
+    });
+}
+
+fn handle_uninstall(app: &mut App, manager: &Arc<GoManager>, purge: bool) {
+    if let Err(e) = manager.uninstall(purge) {
+        app.set_status(format!("Uninstall failed: {}", e), MsgKind::Error);
+    } else {
+        app.set_status("govmr uninstalled. Press q to exit.", MsgKind::Success);
     }
 }
