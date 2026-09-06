@@ -14,6 +14,7 @@ use crate::{
     theme::{Theme, ThemeName},
     version::{GoRelease, GoVersion, compare_versions},
 };
+use std::fs::File;
 use std::{
     env::consts::{ARCH, OS},
     fs,
@@ -21,7 +22,6 @@ use std::{
     sync::Mutex,
     time::Duration,
 };
-use std::fs::File;
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// Primary orchestrator managing installed toolchains, downloads, and version switching.
@@ -327,6 +327,9 @@ impl GoManager {
     }
 
     /// Checks GitHub for a newer release tag. Returns `Some(version)` if an update is available.
+    ///
+    /// # Errors
+    /// Returns [`GovmError`] if the release query or its response parsing fails.
     pub async fn check_for_update(&self) -> Result<Option<String>, GovmError> {
         let res = self
             .client
@@ -353,6 +356,9 @@ impl GoManager {
     }
 
     /// Downloads the latest release archive, extracts the binary, and replaces the current executable.
+    ///
+    /// # Errors
+    /// Returns [`GovmError`] if any download, archive-extraction, or file-replacement step fails.
     pub async fn perform_update(&self, version: &str) -> Result<(), GovmError> {
         let os = match OS {
             "macos" => "apple-darwin",
@@ -361,14 +367,14 @@ impl GoManager {
             other => other,
         };
         let arch = ARCH;
-        let target = format!("{}-{}", arch, os);
+        let target = format!("{arch}-{os}");
         let ext = if cfg!(windows) { "zip" } else { "tar.gz" };
 
         let url = format!(
             "https://github.com/seyallius/govmr/releases/download/v{version}/govmr-v{version}-{target}.{ext}"
         );
 
-        logging::info(&format!("update: downloading {}", url));
+        logging::info(&format!("update: downloading {url}"));
         let res = self.client.get(&url).send().await?;
         let bytes = res.bytes().await?;
 
@@ -385,7 +391,9 @@ impl GoManager {
             let mut archive = zip::ZipArchive::new(File::open(&archive_path)?)
                 .map_err(|e| GovmError::Extraction(e.to_string()))?;
             for i in 0..archive.len() {
-                let mut file = archive.by_index(i).unwrap();
+                let mut file = archive
+                    .by_index(i)
+                    .map_err(|e| GovmError::Extraction(e.to_string()))?;
                 if file.name().ends_with(bin_name) {
                     let mut out = File::create(&new_bin_path)?;
                     std::io::copy(&mut file, &mut out)?;
@@ -398,12 +406,7 @@ impl GoManager {
             let mut archive = tar::Archive::new(tar);
             for entry in archive.entries()? {
                 let mut entry = entry?;
-                if entry
-                    .path()?
-                    .file_name()
-                    .map(|n| n == bin_name)
-                    .unwrap_or(false)
-                {
+                if entry.path()?.file_name().is_some_and(|n| n == bin_name) {
                     entry.unpack(&new_bin_path)?;
                     break;
                 }
@@ -435,6 +438,10 @@ impl GoManager {
     }
 
     /// Removes the govmr binary and optionally purges the ~/.govmr directory.
+    ///
+    /// # Errors
+    /// Returns [`GovmError`] if the home directory cannot be found or any
+    /// file-removal step fails.
     pub fn uninstall(&self, purge: bool) -> Result<(), GovmError> {
         if purge {
             let home = dirs::home_dir().ok_or(GovmError::HomeNotFound)?;

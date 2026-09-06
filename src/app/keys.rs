@@ -53,6 +53,9 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
     if let Some(target) = app.state.confirming_delete.take() {
         return handle_confirm_delete_key(key, app, action_tx, &target);
     }
+    if let Some(outcome) = handle_command_help_key(key, app) {
+        return outcome;
+    }
     if app.state.filter_mode {
         return handle_filter_key(key, app);
     }
@@ -192,6 +195,62 @@ fn handle_confirm_delete_key(
     KeyOutcome::Continue
 }
 
+/// Handles keys while the right-docked keyboard help panel is open.
+///
+/// While the panel is shown it swallows navigation keys (so they scroll the
+/// command catalogue instead of the version list) plus `?`/Esc to close it and
+/// `q`/Ctrl-C to quit. `u` and `x` launch the self-update / self-uninstall
+/// confirmations (they mean those maintenance actions only while this panel is
+/// open — on the main dashboard `u` switches the active version). Any other key
+/// is ignored so reading the list can never trigger an unrelated action.
+fn handle_command_help_key(key: KeyEvent, app: &mut App) -> Option<KeyOutcome> {
+    if !app.state.show_command_help {
+        return None;
+    }
+    Some(match key.code {
+        KeyCode::Char('?') | KeyCode::Esc => {
+            app.close_command_help();
+            KeyOutcome::Continue
+        }
+        KeyCode::Char('u') => {
+            app.state.system_prompt = Some(SystemPrompt::Update);
+            app.close_command_help();
+            KeyOutcome::Continue
+        }
+        KeyCode::Char('x') => {
+            app.state.system_prompt = Some(SystemPrompt::UninstallKeep);
+            app.close_command_help();
+            KeyOutcome::Continue
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.scroll_command_help(1);
+            KeyOutcome::Continue
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.scroll_command_help(-1);
+            KeyOutcome::Continue
+        }
+        KeyCode::PageDown => {
+            app.scroll_command_help(8);
+            KeyOutcome::Continue
+        }
+        KeyCode::PageUp => {
+            app.scroll_command_help(-8);
+            KeyOutcome::Continue
+        }
+        KeyCode::Home | KeyCode::Char('g') => {
+            app.scroll_command_help(i64::MIN);
+            KeyOutcome::Continue
+        }
+        KeyCode::End | KeyCode::Char('G') => {
+            app.scroll_command_help(i64::MAX);
+            KeyOutcome::Continue
+        }
+        KeyCode::Char('q') => KeyOutcome::Quit,
+        _ => KeyOutcome::Continue,
+    })
+}
+
 /// Handles text input while a filter query is being typed.
 fn handle_filter_key(key: KeyEvent, app: &mut App) -> KeyOutcome {
     match key.code {
@@ -306,7 +365,7 @@ fn handle_system_prompt_key(
     prompt: SystemPrompt,
 ) -> KeyOutcome {
     match key.code {
-        KeyCode::Char('y') | KeyCode::Char('Y') => {
+        KeyCode::Char('y' | 'Y') => {
             match prompt {
                 SystemPrompt::Update => {
                     let _ = action_tx.send(Action::Update);
@@ -320,7 +379,7 @@ fn handle_system_prompt_key(
             }
             app.state.system_prompt = None;
         }
-        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+        KeyCode::Char('n' | 'N') | KeyCode::Esc => {
             if prompt == SystemPrompt::UninstallKeep {
                 // Ask if they want to purge instead
                 app.state.system_prompt = Some(SystemPrompt::UninstallPurge);
@@ -353,8 +412,17 @@ fn handle_main_shortcut_key(
         KeyCode::Char('L') => {
             app.open_logs();
         }
-        KeyCode::Char('h' | '?') => {
-            app.state.show_help = true;
+        KeyCode::Char('?') => {
+            app.toggle_command_help();
+        }
+        // The PATH-setup overlay is only relevant while the shim is missing;
+        // once configured, `h` behaves like `?` and opens the command help.
+        KeyCode::Char('h') => {
+            if app.state.is_shim_in_path {
+                app.toggle_command_help();
+            } else {
+                app.state.show_help = true;
+            }
         }
         KeyCode::Char('r') if !app.is_busy() => {
             let _ = action_tx.send(Action::Refresh);

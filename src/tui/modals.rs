@@ -2,10 +2,10 @@
 
 use super::widgets::{centered_rect, clear_area, download_percent, spinner_span};
 use crate::{
-    theme::ThemePickerView,
     app::{AppState, BusyState, Phase, SystemPrompt},
+    theme::ThemePickerView,
     theme::{Theme, ThemeFamily, ThemeName},
-    version::GoVersion
+    version::GoVersion,
 };
 use ratatui::{
     Frame,
@@ -152,9 +152,21 @@ pub(crate) fn render_system_prompt(
     clear_area(frame, area, theme);
 
     let (title, msg, color) = match prompt {
-        SystemPrompt::Update => (" 🔄 Update ", "Download and install the latest govmr version?", theme.highlight()),
-        SystemPrompt::UninstallKeep => (" 🗑️ Uninstall ", "Remove govmr binary but KEEP ~/.govmr?", theme.warning()),
-        SystemPrompt::UninstallPurge => (" 🚨 Purge ", "DELETE ~/.govmr and ALL installed Go versions?", theme.error()),
+        SystemPrompt::Update => (
+            " 🔄 Update ",
+            "Download and install the latest govmr version?",
+            theme.highlight(),
+        ),
+        SystemPrompt::UninstallKeep => (
+            " 🗑️ Uninstall ",
+            "Remove govmr binary but KEEP ~/.govmr?",
+            theme.warning(),
+        ),
+        SystemPrompt::UninstallPurge => (
+            " 🚨 Purge ",
+            "DELETE ~/.govmr and ALL installed Go versions?",
+            theme.error(),
+        ),
     };
 
     let block = Block::default()
@@ -165,7 +177,10 @@ pub(crate) fn render_system_prompt(
         .style(Style::default().bg(theme.bg));
     frame.render_widget(block, area);
 
-    let inner = area.inner(Margin { horizontal: 2, vertical: 1 });
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
     let text = vec![
         Line::from(""),
         Line::from(Span::styled(msg, theme.modal_body())),
@@ -174,7 +189,14 @@ pub(crate) fn render_system_prompt(
             Span::styled("   [y] ", theme.success().add_modifier(Modifier::BOLD)),
             Span::styled("Yes     ", theme.muted()),
             Span::styled("[n/esc] ", theme.error().add_modifier(Modifier::BOLD)),
-            Span::styled(if prompt == SystemPrompt::UninstallKeep { "No (Purge instead)" } else { "Cancel" }, theme.muted()),
+            Span::styled(
+                if prompt == SystemPrompt::UninstallKeep {
+                    "No (Purge instead)"
+                } else {
+                    "Cancel"
+                },
+                theme.muted(),
+            ),
         ]),
     ];
     frame.render_widget(Paragraph::new(text).alignment(Alignment::Center), inner);

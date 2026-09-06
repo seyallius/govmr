@@ -1,8 +1,11 @@
 //! Module dashboard - Main dashboard layout composition, chrome, and version list rendering.
 
 use super::{
+    help::render_command_help,
     logs::render_log_panel,
-    modals::{render_delete_modal, render_install_modal, render_theme_picker, render_system_prompt},
+    modals::{
+        render_delete_modal, render_install_modal, render_system_prompt, render_theme_picker,
+    },
     setup::draw_setup_modal,
     status::render_status_bar,
     widgets::{right_pad, shorten_path, tilde_path},
@@ -81,6 +84,18 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         (inner, None)
     };
 
+    // Dock the keyboard help panel to the right when open; the dashboard body
+    // keeps the left-hand two thirds and stays fully interactive underneath.
+    let (body_area, help_area) = if state.show_command_help {
+        let split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(5), Constraint::Percentage(44)])
+            .split(dash_inner);
+        (split[0], Some(split[1]))
+    } else {
+        (dash_inner, None)
+    };
+
     // ---- Vertical layout --------------------------------------------------------------------- //
     let show_warning = !state.is_shim_in_path;
     let mut constraints = Vec::with_capacity(5);
@@ -95,7 +110,7 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(constraints)
-        .split(dash_inner);
+        .split(body_area);
 
     // A centered modal covers the chrome areas; hide the pieces that would
     // otherwise bleed through the modal edges. The theme picker is deliberately
@@ -125,6 +140,10 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     if !modal_active {
         render_status_bar(frame, status_chunk, state, &theme);
         render_footer(frame, footer_chunk, state, &theme);
+    }
+
+    if let Some(area) = help_area {
+        render_command_help(frame, area, state, &theme);
     }
 
     if let Some(area) = log_area {
@@ -437,6 +456,11 @@ fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme)
             spans.extend(hint("`", "focus"));
         }
         spans.extend(hint("r", "refresh"));
+        if state.show_command_help {
+            spans.extend(hint("esc", "close"));
+        } else {
+            spans.extend(hint("?", "help"));
+        }
         spans.extend(hint("q", "quit"));
     }
 

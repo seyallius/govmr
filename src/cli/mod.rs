@@ -95,7 +95,7 @@ pub async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
         Some(Commands::List) => cmd_list(&manager).await?,
         Some(Commands::Theme { name }) => cmd_theme(&manager, name)?,
         Some(Commands::Update) => cmd_update(&manager).await?,
-        Some(Commands::Uninstall { purge }) => cmd_uninstall(&manager, purge).await?,
+        Some(Commands::Uninstall { purge }) => cmd_uninstall(&manager, purge)?,
         None => unreachable!(),
     }
     Ok(())
@@ -292,7 +292,7 @@ async fn cmd_update(manager: &GoManager) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_uninstall(manager: &GoManager, purge: bool) -> Result<()> {
+fn cmd_uninstall(manager: &GoManager, purge: bool) -> Result<()> {
     println!(
         "{} Are you sure you want to uninstall govmr? [y/N]",
         paint(YELLOW, "⚠️")

@@ -280,13 +280,13 @@ fn spawn_update(
         match mgr.check_for_update().await {
             Ok(Some(ver)) => {
                 if let Err(e) = mgr.perform_update(&ver).await {
-                    let _ = action_tx.send(Action::InstallFailed(format!("Update failed: {}", e)));
+                    let _ = action_tx.send(Action::InstallFailed(format!("Update failed: {e}")));
                 } else {
                     let _ = action_tx.send(Action::InstallDone(GoVersion {
                         raw_version: ver,
                         display_name: "govmr".into(),
-                        filename: "".into(),
-                        url: "".into(),
+                        filename: String::new(),
+                        url: String::new(),
                         size: 0,
                         installed: false,
                         active: false,
@@ -307,7 +307,7 @@ fn spawn_update(
 
 fn handle_uninstall(app: &mut App, manager: &Arc<GoManager>, purge: bool) {
     if let Err(e) = manager.uninstall(purge) {
-        app.set_status(format!("Uninstall failed: {}", e), MsgKind::Error);
+        app.set_status(format!("Uninstall failed: {e}"), MsgKind::Error);
     } else {
         app.set_status("govmr uninstalled. Press q to exit.", MsgKind::Success);
     }

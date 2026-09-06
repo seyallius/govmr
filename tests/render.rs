@@ -7,7 +7,7 @@
 
 use govmr::{
     app::{ActiveTab, AppState, BusyState, Phase},
-    theme::{Theme, ThemeName},
+    theme::{Theme, ThemeFamily, ThemeName, ThemePickerView},
     tui::dashboard::{render, render_overlays},
     version::GoVersion,
 };
@@ -196,21 +196,30 @@ fn renders_path_warning_when_shim_missing() {
 
 #[test]
 fn renders_theme_picker_with_all_schemes() {
-    let mut terminal = make_terminal();
-    let mut state = AppState::from_versions(versions_fixture(), true);
-    state.show_theme_picker = true;
-    state.theme = Theme::for_name(ThemeName::Midnight);
-    terminal
-        .draw(|f| {
-            render(f, &mut state);
-            render_overlays(f, &state);
-        })
-        .unwrap();
+    // The picker is two-level: opening a folder lists only that family's
+    // themes, so iterate both folders to confirm every shipped scheme renders.
+    for family in ThemeFamily::ALL {
+        let mut terminal = make_terminal();
+        let mut state = AppState::from_versions(versions_fixture(), true);
+        state.show_theme_picker = true;
+        state.theme = Theme::for_name(ThemeName::Midnight);
+        state.theme_picker.view = ThemePickerView::Family(family);
+        terminal
+            .draw(|f| {
+                render(f, &mut state);
+                render_overlays(f, &state);
+            })
+            .unwrap();
 
-    let text = buffer_as_text(terminal.backend().buffer());
-    assert!(text.contains("Color Theme"), "picker title");
-    for name in ThemeName::ALL {
-        assert!(text.contains(name.title()), "theme {} listed", name.title());
+        let text = buffer_as_text(terminal.backend().buffer());
+        assert!(text.contains("Color Theme"), "picker title");
+        for name in ThemeName::in_family(family) {
+            assert!(
+                text.contains(name.title()),
+                "theme {} should be listed inside {family:?}",
+                name.title()
+            );
+        }
     }
 }
 
@@ -253,7 +262,7 @@ fn light_theme_fills_screen_with_light_background() {
 }
 
 #[test]
-fn all_eight_themes_render_in_picker() {
+fn renders_theme_picker_shows_both_family_folders() {
     let mut terminal = make_terminal();
     let mut state = AppState::from_versions(versions_fixture(), true);
     state.show_theme_picker = true;
@@ -263,8 +272,16 @@ fn all_eight_themes_render_in_picker() {
             render_overlays(f, &state);
         })
         .unwrap();
+
     let text = buffer_as_text(terminal.backend().buffer());
-    assert!(text.contains("Nord") && text.contains("Dracula") && text.contains("Light"));
+    assert!(text.contains("Color Theme"), "picker title");
+    for family in ThemeFamily::ALL {
+        assert!(
+            text.contains(family.label()),
+            "folder {} should appear on the picker's top level",
+            family.label()
+        );
+    }
 }
 
 #[test]
@@ -277,6 +294,62 @@ fn selection_navigation_wraps_within_visible_list() {
     assert!(state.list_state.selected() == Some(0), "wraps to top");
     state.previous_item();
     assert!(state.list_state.selected() == Some(2), "wraps to bottom");
+}
+
+#[test]
+fn renders_command_help_panel_docked_right() {
+    let mut terminal = make_terminal();
+    let mut state = AppState::from_versions(versions_fixture(), true);
+    state.show_command_help = true;
+    terminal
+        .draw(|f| {
+            render(f, &mut state);
+            render_overlays(f, &state);
+        })
+        .unwrap();
+
+    let text = buffer_as_text(terminal.backend().buffer());
+    assert!(
+        text.contains("Keyboard Help"),
+        "help panel title should render"
+    );
+    assert!(
+        text.contains("Quit from any screen"),
+        "top binding should render"
+    );
+    assert!(
+        text.contains("Filter versions"),
+        "a later binding should render"
+    );
+}
+
+#[test]
+fn command_help_panel_scrolls_to_reveal_lower_commands() {
+    let mut terminal = make_terminal();
+    let mut state = AppState::from_versions(versions_fixture(), true);
+    state.show_command_help = true;
+    state.command_help_scroll = usize::MAX; // Jump far past the end.
+    terminal
+        .draw(|f| {
+            render(f, &mut state);
+            render_overlays(f, &state);
+        })
+        .unwrap();
+
+    // The draw clamps the offset back to a valid window at the bottom of the list.
+    assert!(
+        state.command_help_scroll < usize::MAX,
+        "scroll offset should be clamped on render"
+    );
+    let text = buffer_as_text(terminal.backend().buffer());
+    assert!(
+        text.contains("Decline / cancel"),
+        "the bottom binding should become visible after scrolling"
+    );
+    assert!(
+        !text.contains("Quit from any screen"),
+        "the top binding should scroll out of view"
+    );
 }
 
 /// Flattens a ratatui test buffer into a plain string for substring assertions.

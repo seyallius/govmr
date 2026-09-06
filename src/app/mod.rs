@@ -27,6 +27,131 @@ use std::{
 
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
+/// One row of the right-docked command reference panel.
+///
+/// A row is either a [`HelpEntry::Section`] heading or a concrete
+/// [`HelpEntry::Binding`] pairing a set of keys with the action they perform.
+#[derive(Clone, Copy)]
+pub(crate) enum HelpEntry {
+    /// Section heading text shown as a divider label.
+    Section(&'static str),
+    /// A key binding and the action it triggers.
+    Binding {
+        keys: &'static str,
+        action: &'static str,
+    },
+}
+
+/// The full command catalogue rendered by the right-docked keyboard help panel.
+///
+/// Ordering matters: entries are shown top-to-bottom exactly as listed here,
+/// and the panel's scroll offset is expressed in rows of this slice.
+pub(crate) const COMMAND_REFERENCE: &[HelpEntry] = &[
+    HelpEntry::Section("Global"),
+    HelpEntry::Binding {
+        keys: "q / ^C",
+        action: "Quit from any screen",
+    },
+    HelpEntry::Binding {
+        keys: "Esc",
+        action: "Cancel / close view",
+    },
+    HelpEntry::Section("Navigation"),
+    HelpEntry::Binding {
+        keys: "k / ↑",
+        action: "Move up",
+    },
+    HelpEntry::Binding {
+        keys: "j / ↓",
+        action: "Move down",
+    },
+    HelpEntry::Binding {
+        keys: "Tab",
+        action: "Switch tabs",
+    },
+    HelpEntry::Binding {
+        keys: "/",
+        action: "Filter versions",
+    },
+    HelpEntry::Section("Version actions"),
+    HelpEntry::Binding {
+        keys: "i",
+        action: "Install selected",
+    },
+    HelpEntry::Binding {
+        keys: "u",
+        action: "Use (activate) selected",
+    },
+    HelpEntry::Binding {
+        keys: "d",
+        action: "Delete selected",
+    },
+    HelpEntry::Binding {
+        keys: "r",
+        action: "Refresh releases",
+    },
+    HelpEntry::Section("View & workspace"),
+    HelpEntry::Binding {
+        keys: "L",
+        action: "Toggle operation log",
+    },
+    HelpEntry::Binding {
+        keys: "T",
+        action: "Open theme picker",
+    },
+    HelpEntry::Binding {
+        keys: "?",
+        action: "Toggle this help panel",
+    },
+    HelpEntry::Binding {
+        keys: "h",
+        action: "PATH setup help",
+    },
+    HelpEntry::Section("Operation log (focus with `)"),
+    HelpEntry::Binding {
+        keys: "`",
+        action: "Focus / unfocus log",
+    },
+    HelpEntry::Binding {
+        keys: "k / ↑",
+        action: "Scroll up",
+    },
+    HelpEntry::Binding {
+        keys: "j / ↓",
+        action: "Scroll down",
+    },
+    HelpEntry::Binding {
+        keys: "g / G",
+        action: "Newest / oldest",
+    },
+    HelpEntry::Binding {
+        keys: "f",
+        action: "Toggle auto-follow",
+    },
+    HelpEntry::Binding {
+        keys: "w",
+        action: "Toggle word wrap",
+    },
+    HelpEntry::Section("Maintenance (from this panel)"),
+    HelpEntry::Binding {
+        keys: "u",
+        action: "Self-update govmr",
+    },
+    HelpEntry::Binding {
+        keys: "x",
+        action: "Self-uninstall govmr",
+    },
+    HelpEntry::Section("Confirmation dialogs"),
+    HelpEntry::Binding {
+        keys: "y",
+        action: "Confirm action",
+    },
+    HelpEntry::Binding {
+        keys: "n / Esc",
+        action: "Decline / cancel",
+    },
+];
+
 /// Main application controller holding application state and business logic references.
 pub struct App {
     /// Mutable UI state.
@@ -59,6 +184,8 @@ impl App {
                 filter: String::new(),
                 filter_mode: false,
                 show_help: false,
+                show_command_help: false,
+                command_help_scroll: 0,
                 show_theme_picker: false,
                 theme_picker: ThemePickerState::default(),
                 theme: Theme::for_name(current_theme),
@@ -146,6 +273,44 @@ impl App {
     pub fn close_logs(&mut self) {
         self.state.show_logs = false;
         self.state.log_focus = false;
+    }
+
+    /// Opens the right-docked keyboard help panel, resetting its scroll to the top.
+    pub fn open_command_help(&mut self) {
+        self.state.show_command_help = true;
+        self.state.command_help_scroll = 0;
+    }
+
+    /// Closes the right-docked keyboard help panel.
+    pub fn close_command_help(&mut self) {
+        self.state.show_command_help = false;
+    }
+
+    /// Opens the help panel if it is closed, or closes it if it is open.
+    pub fn toggle_command_help(&mut self) {
+        if self.state.show_command_help {
+            self.state.show_command_help = false;
+        } else {
+            self.open_command_help();
+        }
+    }
+
+    /// Scrolls the keyboard help panel by `delta` content lines: positive moves
+    /// downward through the command list, negative back toward the top.
+    ///
+    /// The offset is clamped to the panel's row budget so `g`/`G` can jump to
+    /// either extreme without walking off the end of the catalogue.
+    pub fn scroll_command_help(&mut self, delta: i64) {
+        let max = COMMAND_REFERENCE.len().saturating_sub(1);
+        // The i64 round-trip safely applies a signed delta; the clamp keeps the
+        // result non-negative, so the final cast can never go wrong.
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_possible_wrap,
+            clippy::cast_sign_loss
+        )]
+        let next = (self.state.command_help_scroll as i64 + delta).clamp(0, max as i64) as usize;
+        self.state.command_help_scroll = next;
     }
 
     /// Toggles word wrapping of long log lines (URLs, stack traces, …).

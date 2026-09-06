@@ -148,6 +148,10 @@ pub struct AppState {
     pub filter_mode: bool,
     /// Whether the PATH-setup help overlay is displayed.
     pub show_help: bool,
+    /// Whether the right-docked keyboard help panel is currently displayed.
+    pub show_command_help: bool,
+    /// Vertical scroll offset (in content lines) of the keyboard help panel.
+    pub command_help_scroll: usize,
     /// Whether the color-theme picker overlay is displayed.
     pub show_theme_picker: bool,
     /// Two-level theme-picker navigation (folder → theme) state.
@@ -199,6 +203,8 @@ impl AppState {
             filter: String::new(),
             filter_mode: false,
             show_help: false,
+            show_command_help: false,
+            command_help_scroll: 0,
             show_theme_picker: false,
             theme_picker: ThemePickerState::default(),
             theme,
