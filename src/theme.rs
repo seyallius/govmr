@@ -18,9 +18,11 @@ pub enum ThemeName {
     /// The default Go-brand cyan look.
     #[default]
     GoCyan,
-    /// `JetBrains` "New Island" — deep blue-slate with a bright azure accent.
+    /// `JetBrains` "Island Dark" — lighter slate chrome with the signature
+    /// keyword-orange accent and Darcula-style token colors.
     JetBrainsNewIsland,
-    /// Cursor editor dark — near-black with a soft indigo glow.
+    /// `Cursor` editor dark — neutral near-black chrome with One-Dark-style
+    /// blue / red-pink token accents and gray selection pills.
     CursorDark,
     /// Deep indigo on near-black — easy on the eyes for late nights.
     Midnight,
@@ -301,28 +303,28 @@ impl Theme {
                 dim: Color::Rgb(47, 55, 71),
             },
             ThemeName::JetBrainsNewIsland => Theme {
-                brand: Color::Rgb(93, 176, 255),
-                brand_dark: Color::Rgb(28, 52, 84),
-                success: Color::Rgb(127, 191, 123),
-                error: Color::Rgb(255, 107, 107),
-                warning: Color::Rgb(255, 196, 92),
-                accent: Color::Rgb(187, 154, 247),
-                grey: Color::Rgb(124, 134, 152),
-                fg: Color::Rgb(222, 228, 238),
-                bg: Color::Rgb(30, 35, 48),
-                dim: Color::Rgb(55, 63, 80),
+                brand: Color::Rgb(204, 120, 50),
+                brand_dark: Color::Rgb(72, 52, 34),
+                success: Color::Rgb(106, 171, 115),
+                error: Color::Rgb(224, 85, 97),
+                warning: Color::Rgb(255, 198, 109),
+                accent: Color::Rgb(104, 151, 187),
+                grey: Color::Rgb(128, 134, 139),
+                fg: Color::Rgb(223, 225, 229),
+                bg: Color::Rgb(43, 45, 48),
+                dim: Color::Rgb(62, 65, 70),
             },
             ThemeName::CursorDark => Theme {
-                brand: Color::Rgb(124, 137, 255),
-                brand_dark: Color::Rgb(44, 42, 84),
-                success: Color::Rgb(94, 218, 152),
-                error: Color::Rgb(255, 105, 97),
-                warning: Color::Rgb(255, 193, 94),
-                accent: Color::Rgb(232, 121, 249),
-                grey: Color::Rgb(112, 117, 138),
-                fg: Color::Rgb(226, 228, 240),
-                bg: Color::Rgb(17, 18, 24),
-                dim: Color::Rgb(46, 49, 64),
+                brand: Color::Rgb(97, 175, 239),
+                brand_dark: Color::Rgb(42, 44, 50),
+                success: Color::Rgb(152, 195, 121),
+                error: Color::Rgb(224, 108, 117),
+                warning: Color::Rgb(229, 192, 123),
+                accent: Color::Rgb(198, 120, 221),
+                grey: Color::Rgb(122, 126, 134),
+                fg: Color::Rgb(220, 222, 228),
+                bg: Color::Rgb(26, 27, 30),
+                dim: Color::Rgb(48, 50, 56),
             },
             ThemeName::Midnight => Theme {
                 brand: Color::Rgb(129, 140, 248),

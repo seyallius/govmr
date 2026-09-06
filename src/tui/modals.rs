@@ -412,8 +412,8 @@ fn render_extracting_phase(frame: &mut Frame, rows: &[Rect], tick: u64, theme: &
 fn theme_tagline(name: ThemeName) -> &'static str {
     match name {
         ThemeName::GoCyan => "brand cyan default",
-        ThemeName::JetBrainsNewIsland => "JetBrains island blue",
-        ThemeName::CursorDark => "cursor indigo night",
+        ThemeName::JetBrainsNewIsland => "island slate + orange",
+        ThemeName::CursorDark => "cursor neutral dark",
         ThemeName::Midnight => "deep indigo, low glare",
         ThemeName::TokyoNight => "neon tokyo skyline",
         ThemeName::CatppuccinMocha => "cozy pastel espresso",
