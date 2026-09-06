@@ -41,6 +41,7 @@ pub async fn handle_actions(
             Action::Delete(v) => handle_delete(app, manager, action_tx, &v),
             Action::FixPath => handle_fix_path(app, manager),
             Action::Update => spawn_update(app, manager, action_tx),
+            Action::UpdateDone(msg) => app.set_status(msg, MsgKind::Success),
             Action::Uninstall(purge) => handle_uninstall(app, manager, purge),
         }
     }
@@ -266,7 +267,7 @@ fn handle_fix_path(app: &mut App, manager: &Arc<GoManager>) {
     }
 }
 
-// Add to src/app/actions.rs
+/// Spawns the background self-update check.
 fn spawn_update(
     app: &mut App,
     manager: &Arc<GoManager>,
@@ -274,32 +275,27 @@ fn spawn_update(
 ) {
     app.set_status("Checking for updates...", MsgKind::Info);
     let mgr = manager.clone();
-    let action_tx = action_tx.clone();
+    let tx = action_tx.clone();
 
     tokio::spawn(async move {
         match mgr.check_for_update().await {
             Ok(Some(ver)) => {
                 if let Err(e) = mgr.perform_update(&ver).await {
-                    let _ = action_tx.send(Action::InstallFailed(format!("Update failed: {e}")));
+                    let _ = tx.send(Action::InstallFailed(format!("Update failed: {e}")));
                 } else {
-                    let _ = action_tx.send(Action::InstallDone(GoVersion {
-                        raw_version: ver,
-                        display_name: "govmr".into(),
-                        filename: String::new(),
-                        url: String::new(),
-                        size: 0,
-                        installed: false,
-                        active: false,
-                        path: None,
-                        stable: true,
-                    })); // Reusing InstallDone for success message hack, or create UpdateDone
+                    let _ = tx.send(Action::UpdateDone(format!(
+                        "Updated to v{ver}! Restart govmr to run it."
+                    )));
                 }
             }
             Ok(None) => {
                 // Already up to date
+                let _ = tx.send(Action::UpdateDone(
+                    "You are already on the latest version.".to_string(),
+                ));
             }
             Err(e) => {
-                let _ = action_tx.send(Action::InstallFailed(e.to_string()));
+                let _ = tx.send(Action::InstallFailed(e.to_string()));
             }
         }
     });
