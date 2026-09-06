@@ -8,12 +8,15 @@ mod state;
 pub use action::Action;
 pub use actions::handle_actions;
 pub use keys::{KeyOutcome, handle_key};
-pub use state::{ActiveTab, AppState, BusyState, MsgKind, Phase, StatusMessage, visible_indices};
+pub use state::{
+    ActiveTab, AppState, BusyState, MsgKind, Phase, StatusMessage, ThemePickerState,
+    visible_indices,
+};
 
 use crate::{
     logging,
     manager::{GoManager, InstallProgress},
-    theme::{Theme, ThemeName},
+    theme::{Theme, ThemeFamily, ThemeName, ThemePickerView},
     version::GoVersion,
 };
 use ratatui::widgets::ListState;
@@ -42,10 +45,6 @@ impl App {
     pub fn new(manager: Arc<GoManager>, shim_path: String) -> Self {
         let is_in_path = manager.get_shim_manager().is_in_path();
         let current_theme = manager.theme_name();
-        let theme_picker_index = ThemeName::ALL
-            .iter()
-            .position(|t| *t == current_theme)
-            .unwrap_or(0);
 
         Self {
             state: AppState {
@@ -61,7 +60,7 @@ impl App {
                 filter_mode: false,
                 show_help: false,
                 show_theme_picker: false,
-                theme_picker_index,
+                theme_picker: ThemePickerState::default(),
                 theme: Theme::for_name(current_theme),
                 tick_count: 0,
                 path_fix_notice: None,
@@ -206,46 +205,112 @@ impl App {
         }
     }
 
-    /// Opens the theme picker, landing on the currently active theme.
+    /// Opens the picker at the folder level, highlighting the folder that holds
+    /// the persisted theme and previewing that theme live.
     pub fn open_theme_picker(&mut self) {
         self.state.show_theme_picker = true;
         let current = self.manager.theme_name();
-        self.state.theme_picker_index = ThemeName::ALL
-            .iter()
-            .position(|t| *t == current)
-            .unwrap_or(0);
+        self.state.theme_picker = ThemePickerState {
+            view: ThemePickerView::Categories,
+            family_cursor: current.family().index(),
+            theme_cursor: current.index_in_family(),
+        };
         self.state.theme = self.manager.theme();
     }
 
-    /// Returns the theme currently highlighted in the picker.
+    /// The theme currently highlighted by the picker. Only meaningful while a
+    /// family is open; at the folder level it reports the persisted theme.
     #[must_use]
     pub fn picker_theme(&self) -> ThemeName {
-        ThemeName::ALL[self.state.theme_picker_index]
+        match self.state.theme_picker.view {
+            ThemePickerView::Family(family) => ThemeName::in_family(family)
+                .get(self.state.theme_picker.theme_cursor)
+                .copied()
+                .unwrap_or_default(),
+            ThemePickerView::Categories => self.manager.theme_name(),
+        }
     }
 
-    /// Moves the picker cursor up/down and live-previews the theme.
-    // The picker list holds a handful of fixed entries, so the i32 round-trip
-    // cannot overflow or truncate in practice.
+    /// Moves the cursor within the current level, live-previewing the highlighted
+    /// theme while a family is open.
+    /// Cursors index a tiny fixed set, so the i32 round-trip can neither
+    /// overflow nor truncate in practice.
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_possible_wrap,
         clippy::cast_sign_loss
     )]
     pub fn picker_move(&mut self, delta: i32) {
-        let len = ThemeName::ALL.len() as i32;
-        let mut i = self.state.theme_picker_index as i32 + delta;
-        if i < 0 {
-            i = len - 1;
+        match self.state.theme_picker.view {
+            ThemePickerView::Categories => {
+                let len = ThemeFamily::ALL.len() as i32;
+                let mut i = self.state.theme_picker.family_cursor as i32 + delta;
+                if i < 0 {
+                    i = len - 1;
+                }
+                if i >= len {
+                    i = 0;
+                }
+                self.state.theme_picker.family_cursor = i as usize;
+                // Folder level previews the persisted theme, not a candidate.
+                self.state.theme = self.manager.theme();
+            }
+            ThemePickerView::Family(family) => {
+                let len = ThemeName::in_family(family).len() as i32;
+                if len == 0 {
+                    return;
+                }
+                let mut i = self.state.theme_picker.theme_cursor as i32 + delta;
+                if i < 0 {
+                    i = len - 1;
+                }
+                if i >= len {
+                    i = 0;
+                }
+                self.state.theme_picker.theme_cursor = i as usize;
+                self.state.theme = Theme::for_name(self.picker_theme());
+            }
         }
-        if i >= len {
-            i = 0;
-        }
-        self.state.theme_picker_index = i as usize;
-        self.state.theme = Theme::for_name(self.picker_theme());
     }
 
-    /// Selects the highlighted picker entry, persisting it via the manager.
+    /// Dives into the highlighted folder, or saves the highlighted theme when a
+    /// folder is already open (Enter does double duty, like a file manager).
+    pub fn picker_enter(&mut self) {
+        match self.state.theme_picker.view {
+            ThemePickerView::Categories => {
+                let family = ThemeFamily::at(self.state.theme_picker.family_cursor);
+                let themes = ThemeName::in_family(family);
+                let current = self.manager.theme_name();
+                // Land on the persisted theme when it lives here, else clamp.
+                self.state.theme_picker.theme_cursor = if current.family() == family {
+                    current.index_in_family()
+                } else {
+                    self.state
+                        .theme_picker
+                        .theme_cursor
+                        .min(themes.len().saturating_sub(1))
+                };
+                self.state.theme_picker.view = ThemePickerView::Family(family);
+                self.state.theme = Theme::for_name(self.picker_theme());
+            }
+            ThemePickerView::Family(_) => self.picker_apply(),
+        }
+    }
+
+    /// Steps up one level (family → folders) and restores the saved-theme preview.
+    pub fn picker_back(&mut self) {
+        if let ThemePickerView::Family(_) = self.state.theme_picker.view {
+            self.state.theme_picker.view = ThemePickerView::Categories;
+            self.state.theme = self.manager.theme();
+        }
+    }
+
+    /// Persists the highlighted theme and closes the picker. No-op unless a
+    /// family is open (Enter at the folder level dives in instead).
     pub fn picker_apply(&mut self) {
+        if !matches!(self.state.theme_picker.view, ThemePickerView::Family(_)) {
+            return;
+        }
         let chosen = self.picker_theme();
         match self.manager.set_theme(chosen) {
             Ok(theme) => {
@@ -260,11 +325,13 @@ impl App {
             }
         }
         self.state.show_theme_picker = false;
+        self.state.theme_picker.view = ThemePickerView::Categories;
     }
 
-    /// Closes the picker and restores the persisted theme (cancelling preview).
+    /// Closes the picker and restores the persisted theme (discards any preview).
     pub fn picker_cancel(&mut self) {
         self.state.show_theme_picker = false;
+        self.state.theme_picker.view = ThemePickerView::Categories;
         self.state.theme = self.manager.theme();
     }
 

@@ -1,7 +1,7 @@
 //! Module state - Mutable UI state containers and transient status types for the TUI.
 
 use crate::{
-    theme::{Theme, ThemeName},
+    theme::{Theme, ThemeName, ThemePickerView},
     version::GoVersion,
 };
 use ratatui::{text::Line, widgets::ListState};
@@ -95,9 +95,24 @@ impl BusyState {
     }
 }
 
+/// Navigation state of the two-level theme picker (📁 folders → themes).
+///
+/// `view` says which level is on screen; `family_cursor` is only meaningful
+/// at the folder level and `theme_cursor` only inside an open family, so a
+/// stale cursor can never leak across levels.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ThemePickerState {
+    /// Which level of the picker is currently rendered.
+    pub view: ThemePickerView,
+    /// Highlighted folder at the folder level (0 = Dark, 1 = Light).
+    pub family_cursor: usize,
+    /// Highlighted theme inside the open family.
+    pub theme_cursor: usize,
+}
+
 /// Holds all state variables required for rendering and interacting with the TUI.
-// A flat bag of independent UI toggles: they combine freely, so neither a
-// state machine nor grouped bool enums would model them more accurately.
+/// A flat bag of independent UI toggles: they combine freely, so neither a
+/// state machine nor grouped bool enums would model them more accurately.
 #[allow(clippy::struct_excessive_bools)]
 pub struct AppState {
     /// Full list of available and installed versions.
@@ -124,8 +139,8 @@ pub struct AppState {
     pub show_help: bool,
     /// Whether the color-theme picker overlay is displayed.
     pub show_theme_picker: bool,
-    /// Index of the currently highlighted entry in the theme picker.
-    pub theme_picker_index: usize,
+    /// Two-level theme-picker navigation (folder → theme) state.
+    pub theme_picker: ThemePickerState,
     /// The active color palette (reloaded instantly when switching themes).
     pub theme: Theme,
     /// Monotonic render counter used to drive spinner animations.
@@ -172,7 +187,7 @@ impl AppState {
             filter_mode: false,
             show_help: false,
             show_theme_picker: false,
-            theme_picker_index: 0,
+            theme_picker: ThemePickerState::default(),
             theme,
             tick_count: 0,
             path_fix_notice: None,

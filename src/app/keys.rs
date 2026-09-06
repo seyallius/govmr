@@ -8,7 +8,7 @@
 use crate::{
     app::{Action, App, MsgKind},
     logging,
-    theme::{Theme, ThemeName},
+    theme::{Theme, ThemeName, ThemePickerView},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::text::{Line, Span};
@@ -118,20 +118,34 @@ fn handle_help_overlay_key(key: KeyEvent, app: &mut App) -> KeyOutcome {
     }
 }
 
-/// Handles keys while the theme picker is open: navigate with arrows/vim keys,
-/// Enter saves, Esc/q cancels and restores the persisted theme.
+/// Handles keys while the theme picker is open.
+///
+/// The picker is a two-level browser: at the folder level Enter/Right opens
+/// the highlighted Dark/Light family; inside a family Enter saves the
+/// highlighted theme, while Left/Esc step back out (Esc at the folder level
+/// cancels the whole picker and restores the saved theme).
 fn handle_theme_picker_key(key: KeyEvent, app: &mut App) -> KeyOutcome {
+    let in_family = matches!(app.state.theme_picker.view, ThemePickerView::Family(_));
     match key.code {
-        KeyCode::Esc | KeyCode::Char('q') => app.picker_cancel(),
-        KeyCode::Enter => app.picker_apply(),
+        KeyCode::Esc | KeyCode::Char('q') => {
+            if in_family {
+                app.picker_back();
+            } else {
+                app.picker_cancel();
+            }
+        }
+        KeyCode::Enter | KeyCode::Right => app.picker_enter(),
+        KeyCode::Left if in_family => app.picker_back(),
         KeyCode::Down | KeyCode::Char('j') => app.picker_move(1),
         KeyCode::Up | KeyCode::Char('k') => app.picker_move(-1),
-        KeyCode::Char(c) if c.is_ascii_digit() && c != '0' => {
-            let i = (c as u8 - b'1') as usize;
-            if i < ThemeName::ALL.len() {
-                app.state.theme_picker_index = i;
-                app.state.theme = Theme::for_name(app.picker_theme());
-                app.picker_apply();
+        KeyCode::Char(c) if in_family && c.is_ascii_digit() && c != '0' => {
+            if let ThemePickerView::Family(family) = app.state.theme_picker.view {
+                let i = (c as u8 - b'1') as usize;
+                if i < ThemeName::in_family(family).len() {
+                    app.state.theme_picker.theme_cursor = i;
+                    app.state.theme = Theme::for_name(app.picker_theme());
+                    app.picker_apply();
+                }
             }
         }
         _ => {}

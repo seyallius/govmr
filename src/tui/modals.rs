@@ -1,9 +1,10 @@
 //! Module modals - Centered modal overlays: theme picker, install progress, and delete confirmation.
 
 use super::widgets::{centered_rect, clear_area, download_percent, spinner_span};
+use crate::theme::ThemePickerView;
 use crate::{
     app::{AppState, BusyState, Phase},
-    theme::{Theme, ThemeName},
+    theme::{Theme, ThemeFamily, ThemeName},
     version::GoVersion,
 };
 use ratatui::{
@@ -16,84 +17,23 @@ use ratatui::{
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
 
-/// Renders the color-theme picker overlay with a live preview.
+/// Renders the color-theme picker as a two-level 📁 browser.
+///
+/// The top level shows the Dark / Light folders; opening one shows only the
+/// themes inside it. The live dashboard behind the overlay previews whichever
+/// theme is highlighted, so the effect of a choice is visible before saving.
 pub(crate) fn render_theme_picker(
     frame: &mut Frame,
     screen: Rect,
     state: &AppState,
     theme: &Theme,
 ) {
-    let area = centered_rect(58, 62, screen);
-    clear_area(frame, area, theme);
-
-    let block = Block::default()
-        .title(Span::styled(" 🎨 Color Theme ", theme.title()))
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(theme.border())
-        .style(Style::default().bg(theme.bg));
-    frame.render_widget(block, area);
-
-    let inner = area.inner(Margin {
-        horizontal: 2,
-        vertical: 1,
-    });
-
-    let rows: Vec<ListItem> = ThemeName::ALL
-        .iter()
-        .enumerate()
-        .map(|(i, name)| {
-            let selected = i == state.theme_picker_index;
-            let swatch = Theme::for_name(*name);
-            let marker = if selected { "❯" } else { " " };
-            let marker_style = if selected {
-                theme.brand_bold()
-            } else {
-                theme.muted()
-            };
-            let name_style = if selected {
-                Style::default()
-                    .fg(swatch.brand)
-                    .bg(theme.brand_dark)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(theme.fg)
-            };
-            // A small colored block previews the theme's accent.
-            Line::from(vec![
-                Span::styled(format!(" {marker} "), marker_style),
-                Span::styled("███ ", Style::default().fg(swatch.brand)),
-                Span::styled(format!("{:<14}", name.title()), name_style),
-                Span::styled(format!("  {}", theme_tagline(*name)), theme.muted()),
-            ])
-            .into()
-        })
-        .collect();
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(2)])
-        .split(inner);
-
-    let list = List::new(rows)
-        .highlight_style(theme.selected_row())
-        .highlight_symbol("");
-    let mut list_state = ListState::default();
-    list_state.select(Some(state.theme_picker_index));
-    frame.render_stateful_widget(list, chunks[0], &mut list_state);
-
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(" ↑↓", theme.key_hint()),
-            Span::styled(" preview  ", theme.muted()),
-            Span::styled("enter", theme.key_hint()),
-            Span::styled(" save  ", theme.muted()),
-            Span::styled("esc", theme.key_hint()),
-            Span::styled(" cancel ", theme.muted()),
-        ]))
-        .alignment(Alignment::Center),
-        chunks[1],
-    );
+    match state.theme_picker.view {
+        ThemePickerView::Categories => render_picker_categories(frame, screen, state, theme),
+        ThemePickerView::Family(family) => {
+            render_picker_family(frame, screen, state, family, theme)
+        }
+    }
 }
 
 /// Renders the centered installation progress modal with a live gauge.
@@ -115,10 +55,8 @@ pub(crate) fn render_install_modal(
     else {
         return;
     };
-
     let area = centered_rect(62, 38, screen);
     clear_area(frame, area, theme);
-
     let block = Block::default()
         .title(Span::styled(
             format!(" Installing Go {version} "),
@@ -164,10 +102,8 @@ pub(crate) fn render_delete_modal(
     let Some(target) = &state.confirming_delete else {
         return;
     };
-
     let area = centered_rect(58, 30, screen);
     clear_area(frame, area, theme);
-
     let block = Block::default()
         .title(Span::styled(" ⚠ Confirm Deletion ", theme.warning()))
         .borders(Borders::ALL)
@@ -208,6 +144,157 @@ pub(crate) fn render_delete_modal(
 
 // -------------------------------------- Internal Helpers -------------------------------------- //
 
+/// Renders the folder level: one row per [`ThemeFamily`] with its theme count.
+fn render_picker_categories(frame: &mut Frame, screen: Rect, state: &AppState, theme: &Theme) {
+    let area = centered_rect(56, 36, screen);
+    clear_area(frame, area, theme);
+    let block = Block::default()
+        .title(Span::styled(" 🎨 Color Theme ", theme.title()))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(theme.border())
+        .style(Style::default().bg(theme.bg));
+    frame.render_widget(block, area);
+
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(2)])
+        .split(inner);
+
+    let items: Vec<ListItem> = ThemeFamily::ALL
+        .iter()
+        .enumerate()
+        .map(|(i, family)| {
+            let selected = i == state.theme_picker.family_cursor;
+            let count = ThemeName::in_family(*family).len();
+            let marker = if selected { "❯" } else { " " };
+            let marker_style = if selected {
+                theme.brand_bold()
+            } else {
+                theme.muted()
+            };
+            let name_style = if selected {
+                Style::default()
+                    .fg(theme.brand)
+                    .bg(theme.brand_dark)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.fg)
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!(" {marker} "), marker_style),
+                Span::styled(format!(" {} ", family.icon()), theme.muted()),
+                Span::styled(format!("{:<6}", family.label()), name_style),
+                Span::styled(format!("  {count} themes  →"), theme.muted()),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items)
+        .highlight_style(theme.selected_row())
+        .highlight_symbol("");
+    let mut list_state = ListState::default();
+    list_state.select(Some(state.theme_picker.family_cursor));
+    frame.render_stateful_widget(list, chunks[0], &mut list_state);
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" ↑↓", theme.key_hint()),
+            Span::styled(" pick  ", theme.muted()),
+            Span::styled("enter", theme.key_hint()),
+            Span::styled(" open  ", theme.muted()),
+            Span::styled("esc", theme.key_hint()),
+            Span::styled(" cancel ", theme.muted()),
+        ]))
+            .alignment(Alignment::Center),
+        chunks[1],
+    );
+}
+
+/// Renders the theme level: the themes of one family with live accent swatches.
+fn render_picker_family(
+    frame: &mut Frame,
+    screen: Rect,
+    state: &AppState,
+    family: ThemeFamily,
+    theme: &Theme,
+) {
+    let area = centered_rect(66, 78, screen);
+    clear_area(frame, area, theme);
+    let block = Block::default()
+        .title(Line::from(vec![
+            Span::styled(" 🎨 Color Theme ", theme.title()),
+            Span::styled(format!("· {} ", family.label()), theme.muted()),
+        ]))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(theme.border())
+        .style(Style::default().bg(theme.bg));
+    frame.render_widget(block, area);
+
+    let inner = area.inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(2)])
+        .split(inner);
+
+    let items: Vec<ListItem> = ThemeName::in_family(family)
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let selected = i == state.theme_picker.theme_cursor;
+            let swatch = Theme::for_name(*name);
+            let marker = if selected { "❯" } else { " " };
+            let marker_style = if selected {
+                theme.brand_bold()
+            } else {
+                theme.muted()
+            };
+            let name_style = if selected {
+                Style::default()
+                    .fg(swatch.brand)
+                    .bg(theme.brand_dark)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.fg)
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!(" {marker} "), marker_style),
+                Span::styled("███ ", Style::default().fg(swatch.brand)),
+                Span::styled(format!("{:<20}", name.title()), name_style),
+                Span::styled(format!("  {}", theme_tagline(*name)), theme.muted()),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items)
+        .highlight_style(theme.selected_row())
+        .highlight_symbol("");
+    let mut list_state = ListState::default();
+    list_state.select(Some(state.theme_picker.theme_cursor));
+    frame.render_stateful_widget(list, chunks[0], &mut list_state);
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" ↑↓", theme.key_hint()),
+            Span::styled(" preview  ", theme.muted()),
+            Span::styled("enter", theme.key_hint()),
+            Span::styled(" save  ", theme.muted()),
+            Span::styled("←/esc", theme.key_hint()),
+            Span::styled(" back ", theme.muted()),
+        ]))
+            .alignment(Alignment::Center),
+        chunks[1],
+    );
+}
+
 /// Renders the downloading phase: phase line, progress gauge, and stats row.
 fn render_downloading_phase(
     frame: &mut Frame,
@@ -219,7 +306,6 @@ fn render_downloading_phase(
     theme: &Theme,
 ) {
     let pct = download_percent(downloaded, total);
-
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             spinner_span(tick, theme),
@@ -227,7 +313,6 @@ fn render_downloading_phase(
         ])),
         rows[0],
     );
-
     // pct is clamped to 0..=100, so the cast always fits the gauge's u16.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let percent = pct as u16;
@@ -292,7 +377,6 @@ fn render_extracting_phase(frame: &mut Frame, rows: &[Rect], tick: u64, theme: &
         ])),
         rows[0],
     );
-
     // THE PULSE: Smoothly oscillates between 20% and 80%.
     // Tick counts stay far below 2^53, so the f64 cast cannot lose precision.
     #[allow(clippy::cast_precision_loss)]
@@ -300,7 +384,6 @@ fn render_extracting_phase(frame: &mut Frame, rows: &[Rect], tick: u64, theme: &
     // Maps the wave to a 20% - 80% range that always fits the gauge's u16.
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let pct = (wave * 30.0 + 50.0) as u16;
-
     let gauge = Gauge::default()
         .block(
             Block::default()
@@ -315,7 +398,6 @@ fn render_extracting_phase(frame: &mut Frame, rows: &[Rect], tick: u64, theme: &
             Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
         ));
     frame.render_widget(gauge, rows[1]);
-
     frame.render_widget(
         Paragraph::new(Span::styled(
             "  This can take a few seconds for large toolchains.",

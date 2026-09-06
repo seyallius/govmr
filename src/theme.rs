@@ -1,4 +1,8 @@
 //! Module theme - Selectable, persistable color schemes for the TUI.
+//!
+//! Themes are organized into two brightness families ([`ThemeFamily`]) so the
+//! picker can group them as the catalogue grows: dark schemes first, light
+//! schemes after. `ThemeName::ALL` preserves that dark-then-light ordering.
 
 use ratatui::style::{Color, Modifier, Style};
 use std::fmt;
@@ -78,12 +82,123 @@ impl ThemeName {
             .copied()
             .find(|t| t.key() == key || t.title().to_lowercase() == key)
     }
+
+    /// Whether this theme paints a bright background.
+    ///
+    /// This is the authoritative grouping source; [`Theme::is_light`] performs
+    /// the same check against the concrete palette as a sanity net.
+    #[must_use]
+    pub fn is_light(self) -> bool {
+        matches!(
+            self,
+            ThemeName::CursorLight
+                | ThemeName::CatppuccinLatte
+                | ThemeName::GitHubLight
+                | ThemeName::SolarizedLight
+                | ThemeName::RosePineDawn
+                | ThemeName::Light
+        )
+    }
+
+    /// Whether this theme paints a dim background.
+    #[must_use]
+    pub fn is_dark(self) -> bool {
+        !self.is_light()
+    }
+
+    /// The brightness family this theme belongs to.
+    #[must_use]
+    pub fn family(self) -> ThemeFamily {
+        if self.is_light() {
+            ThemeFamily::Light
+        } else {
+            ThemeFamily::Dark
+        }
+    }
+
+    /// All themes belonging to `family`, preserving [`ThemeName::ALL`] order.
+    #[must_use]
+    pub fn in_family(family: ThemeFamily) -> Vec<ThemeName> {
+        Self::ALL
+            .iter()
+            .copied()
+            .filter(|t| t.family() == family)
+            .collect()
+    }
+
+    /// Index of this theme within its own family's ordered list.
+    #[must_use]
+    pub fn index_in_family(self) -> usize {
+        Self::in_family(self.family())
+            .iter()
+            .position(|t| *t == self)
+            .unwrap_or(0)
+    }
 }
 impl fmt::Display for ThemeName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.title())
     }
 }
+
+/// Coarse brightness family a theme belongs to, used to group the picker.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ThemeFamily {
+    /// Dim-background schemes.
+    Dark,
+    /// Bright-background schemes.
+    Light,
+}
+impl ThemeFamily {
+    /// Every family in display order (dark first).
+    pub const ALL: [ThemeFamily; 2] = [ThemeFamily::Dark, ThemeFamily::Light];
+
+    /// Human-friendly section label.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            ThemeFamily::Dark => "Dark",
+            ThemeFamily::Light => "Light",
+        }
+    }
+
+    /// Small glyph shown next to the section header.
+    #[must_use]
+    pub fn icon(self) -> &'static str {
+        match self {
+            ThemeFamily::Dark => "🌙",
+            ThemeFamily::Light => "☀️",
+        }
+    }
+
+    /// Position of this family within [`ThemeFamily::ALL`] (0 = Dark, 1 = Light).
+    #[must_use]
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|f| *f == self).unwrap_or(0)
+    }
+
+    /// The family at position `i`, clamped to a valid index.
+    #[must_use]
+    pub fn at(i: usize) -> ThemeFamily {
+        Self::ALL[i.min(Self::ALL.len() - 1)]
+    }
+}
+
+/// Where the theme-picker navigation currently is.
+///
+/// The picker is a tiny two-level file browser: choose a [`ThemeFamily`]
+/// folder, then choose a theme inside it. Modeling the level as an enum
+/// keeps the key handler free of boolean flags and makes illegal states
+/// (e.g. "a theme is highlighted but no folder is open") unrepresentable.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum ThemePickerView {
+    /// Choosing between the Dark / Light folders.
+    #[default]
+    Categories,
+    /// Browsing the themes inside one family.
+    Family(ThemeFamily),
+}
+
 /// A concrete palette plus derived widget styles.
 #[derive(Clone, Copy)]
 pub struct Theme {

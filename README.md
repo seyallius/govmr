@@ -32,7 +32,7 @@ _Browsing available versions_
 
 ### Color Theme Picker
 
-_Live preview of all 8 themes - arrows to browse, Enter to apply_
+_Live preview with a 📁 Dark / Light folder browser — arrows to browse, Enter to open & apply_
 
 <a href="https://github.com/seyallius/govmr/blob/main/docs/assets/theme_c.gif">
 <img src="https://github.com/seyallius/govmr/blob/main/docs/assets/theme_c.gif" alt="Theme picker with live preview" width="800"/>
@@ -62,7 +62,12 @@ _Automatic logging and persistent settings in ~/.govmr/_
     - Animated braille spinners for every background task (refresh, switch, delete, install).
     - Rounded-corners theme, branded header showing the active version, and an inline PATH-setup help overlay (`h`).
     - Keyboard navigation (vim keys + arrows).
-- **Selectable color themes**: Eight built-in schemes — **Go Cyan** (default), **Midnight** (dark indigo), **Matrix
+- **Selectable color themes**: Nineteen built-in schemes, browsed through a two-level 📁 picker — first pick a **Dark**
+  🌙 or **Light** ☀️ folder, then browse the themes inside it. Press `T` to open it: arrows to move, `Enter`/`→` to open
+  a folder, `Enter` to save a theme, `←`/`Esc` to go back, and `Esc` at the top to cancel. The dashboard
+  **live-previews** whatever you highlight. Your choice is stored as TOML in `~/.govmr/config.toml` and reloaded on
+  every launch — or set it from the CLI with `govmr theme <name>`. (An old plain-text `~/.govmr/config` is migrated
+  automatically.)
   Green**, **Amber Glow**, **Nord**, **Dracula**, **Light** (bright high-contrast), and **Monochrome**. Press `T` in the
   TUI to open a picker with a _live dashboard preview_ behind it (arrows/`jk` to move, number keys
   `1–8` for instant pick, `Enter` to save, `Esc` to cancel). Your choice is stored as TOML in
@@ -204,7 +209,7 @@ govmr
 | `u`            | Switch the active Go version to the selected release                      |
 | `d`            | Delete the selected installed version (asks for confirmation)             |
 | `r`            | Refresh the remote version manifest from `go.dev`                         |
-| `T`            | Open the color-theme picker (arrows to preview, `Enter` to save)          |
+| `T`            | Open the theme picker (🌙 Dark / ☀️ Light folders → themes, live preview) |
 | `L`            | Toggle the docked operation-log panel (bottom, IDE-style)                 |
 | `` ` ``        | Focus/unfocus the log panel (`j/k` scroll, `f` follow, `w` wrap)          |
 | `h` / `?`      | Open the PATH-setup help overlay                                          |

@@ -2,7 +2,7 @@
 
 #![allow(clippy::unwrap_used)]
 use govmr::{
-    app::{ActiveTab, AppState, BusyState, Phase},
+    app::{ActiveTab, AppState, BusyState, Phase, ThemePickerState},
     theme::{Theme, ThemeName},
     tui::dashboard::{render, render_overlays},
     version::GoVersion,
@@ -124,7 +124,7 @@ fn main() {
     });
     dump("THEME PICKER (live preview)", |s| {
         s.show_theme_picker = true;
-        s.theme_picker_index = 4; // Nord previewed
+        s.theme_picker = ThemePickerState::default();
     });
     dump("AVAILABLE — LIGHT THEME", |s| {
         s.theme = Theme::for_name(ThemeName::Light);
