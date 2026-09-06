@@ -116,16 +116,6 @@ fn handle_help_overlay_key(key: KeyEvent, app: &mut App) -> KeyOutcome {
             }
             KeyOutcome::Continue
         }
-        KeyCode::Char('u') => {
-            app.state.system_prompt = Some(SystemPrompt::Update);
-            app.state.show_help = false; // Close help, show system modal
-            KeyOutcome::Continue
-        }
-        KeyCode::Char('x') => {
-            app.state.system_prompt = Some(SystemPrompt::UninstallKeep);
-            app.state.show_help = false;
-            KeyOutcome::Continue
-        }
         _ => {
             app.state.show_help = false;
             app.state.path_fix_notice = None;
@@ -212,12 +202,12 @@ fn handle_command_help_key(key: KeyEvent, app: &mut App) -> Option<KeyOutcome> {
             app.close_command_help();
             KeyOutcome::Continue
         }
-        KeyCode::Char('u') => {
+        KeyCode::Char('U') => {
             app.state.system_prompt = Some(SystemPrompt::Update);
             app.close_command_help();
             KeyOutcome::Continue
         }
-        KeyCode::Char('x') => {
+        KeyCode::Char('X') => {
             app.state.system_prompt = Some(SystemPrompt::UninstallKeep);
             app.close_command_help();
             KeyOutcome::Continue
@@ -415,12 +405,9 @@ fn handle_main_shortcut_key(
         KeyCode::Char('?') => {
             app.toggle_command_help();
         }
-        // The PATH-setup overlay is only relevant while the shim is missing;
-        // once configured, `h` behaves like `?` and opens the command help.
         KeyCode::Char('h') => {
-            if app.state.is_shim_in_path {
-                app.toggle_command_help();
-            } else {
+            // The PATH-setup overlay is only relevant while the shim is missing;
+            if !app.state.is_shim_in_path {
                 app.state.show_help = true;
             }
         }
@@ -459,6 +446,12 @@ fn handle_main_shortcut_key(
                     app.state.confirming_delete = Some(v.raw_version.clone());
                 }
             }
+        }
+        KeyCode::Char('U') if !app.is_busy() => {
+            app.state.system_prompt = Some(SystemPrompt::Update);
+        }
+        KeyCode::Char('X') if !app.is_busy() => {
+            app.state.system_prompt = Some(SystemPrompt::UninstallKeep);
         }
         _ => {}
     }

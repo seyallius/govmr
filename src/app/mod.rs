@@ -105,7 +105,7 @@ pub(crate) const COMMAND_REFERENCE: &[HelpEntry] = &[
     },
     HelpEntry::Binding {
         keys: "h",
-        action: "PATH setup help",
+        action: "PATH setup (shim missing only)",
     },
     HelpEntry::Section("Operation log (focus with `)"),
     HelpEntry::Binding {
@@ -132,13 +132,13 @@ pub(crate) const COMMAND_REFERENCE: &[HelpEntry] = &[
         keys: "w",
         action: "Toggle word wrap",
     },
-    HelpEntry::Section("Maintenance (from this panel)"),
+    HelpEntry::Section("Maintenance"),
     HelpEntry::Binding {
-        keys: "u",
+        keys: "U",
         action: "Self-update govmr",
     },
     HelpEntry::Binding {
-        keys: "x",
+        keys: "X",
         action: "Self-uninstall govmr",
     },
     HelpEntry::Section("Confirmation dialogs"),

@@ -5,16 +5,17 @@
 //! usable behind it, and its scroll offset is clamped here on every draw so a
 //! long jump (`g`/`G`) can never leave the window past the last row.
 
+use super::widgets::clear_area;
 use crate::{
-    app::{AppState, COMMAND_REFERENCE, HelpEntry},
+    app::{AppState, HelpEntry, COMMAND_REFERENCE},
     theme::Theme,
 };
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Margin, Rect},
-    style::{Modifier, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
+    Frame,
 };
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
@@ -66,7 +67,7 @@ pub(crate) fn render_command_help(
         .iter()
         .skip(start)
         .take(visible)
-        .map(|entry| help_line(*entry, theme))
+        .flat_map(|entry| help_line(*entry, theme))
         .collect();
 
     frame.render_widget(Paragraph::new(lines), content);
@@ -109,17 +110,17 @@ fn scroll_arrow(show: bool, glyph: &'static str, theme: &Theme) -> Span<'static>
     }
 }
 
-/// Styles one command-reference row as a single (non-wrapping) text line.
-fn help_line(entry: HelpEntry, theme: &Theme) -> Line<'static> {
+/// Styles one command-reference row as one or more (non-wrapping) text lines.
+fn help_line(entry: HelpEntry, theme: &Theme) -> Vec<Line<'static>> {
     match entry {
-        HelpEntry::Section(title) => Line::from(Span::styled(
-            format!("─ {title} "),
-            theme.brand_bold().add_modifier(Modifier::UNDERLINED),
-        )),
-        HelpEntry::Binding { keys, action } => Line::from(vec![
-            Span::styled(format!(" {keys:<12}"), theme.key_hint()),
+        HelpEntry::Section(title) => vec![
+            Line::from(Span::styled(format!(" {title} "), theme.brand_bold())),
+            Line::from(Span::styled("─".repeat(30), theme.dim_border())), // Full width separator
+        ],
+        HelpEntry::Binding { keys, action } => vec![Line::from(vec![
+            Span::styled(format!("   {keys:<10}"), theme.key_hint()),
             Span::styled("  ", theme.muted()),
             Span::styled(action, theme.modal_body()),
-        ]),
+        ])],
     }
 }
