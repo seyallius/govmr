@@ -1,8 +1,8 @@
 //! Module resolve - User-query parsing, semver-aware matching, and version resolution.
 //!
 //! Turns user input like `1.22`, `1.21.6`, or `1.24rc1` into the concrete
-//! [`GoVersion`](crate::version::GoVersion) the caller wants, applying proper
-//! component-prefix matching (so `1.2` never matches `1.20`).
+//! [`GoVersion`] the caller wants, applying proper component-prefix matching
+//! (so `1.2` never matches `1.20`).
 
 use super::GoVersion;
 
