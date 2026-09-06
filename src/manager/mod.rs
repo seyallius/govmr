@@ -12,7 +12,7 @@ use crate::{
     logging,
     shim::ShimManager,
     theme::{Theme, ThemeName},
-    version::{GoRelease, GoVersion, compare_versions},
+    version::{compare_versions, GoRelease, GoVersion},
 };
 use std::fs::File;
 use std::{
@@ -22,6 +22,7 @@ use std::{
     sync::Mutex,
     time::Duration,
 };
+
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// Primary orchestrator managing installed toolchains, downloads, and version switching.
@@ -337,6 +338,11 @@ impl GoManager {
             .header("User-Agent", "govmr")
             .send()
             .await?;
+
+        if res.status().as_u16() == 404 {
+            logging::info("update: no public releases published yet");
+            return Ok(None);
+        }
 
         let json: serde_json::Value = res
             .json()
