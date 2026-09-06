@@ -412,12 +412,23 @@ fn render_extracting_phase(frame: &mut Frame, rows: &[Rect], tick: u64, theme: &
 fn theme_tagline(name: ThemeName) -> &'static str {
     match name {
         ThemeName::GoCyan => "brand cyan default",
+        ThemeName::JetBrainsNewIsland => "JetBrains island blue",
+        ThemeName::CursorDark => "cursor indigo night",
         ThemeName::Midnight => "deep indigo, low glare",
-        ThemeName::Matrix => "retro phosphor green",
-        ThemeName::Amber => "warm solarized glow",
+        ThemeName::TokyoNight => "neon tokyo skyline",
+        ThemeName::CatppuccinMocha => "cozy pastel espresso",
         ThemeName::Nord => "snowstorm blue",
         ThemeName::Dracula => "dark purple",
-        ThemeName::Light => "bright high contrast",
+        ThemeName::GruvboxDark => "warm retro earth",
+        ThemeName::RosePine => "muted dusky rose",
+        ThemeName::Matrix => "retro phosphor green",
+        ThemeName::Amber => "warm solarized glow",
         ThemeName::Mono => "minimal greyscale",
+        ThemeName::CursorLight => "clean cursor indigo",
+        ThemeName::CatppuccinLatte => "soft pastel milk",
+        ThemeName::GitHubLight => "github paper white",
+        ThemeName::SolarizedLight => "solarized parchment",
+        ThemeName::RosePineDawn => "gentle morning rose",
+        ThemeName::Light => "bright high contrast",
     }
 }
