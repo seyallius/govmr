@@ -6,26 +6,29 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
     text::{Line, Span},
-    widgets::Block,
+    widgets::{Block, Clear},
 };
 
-// -------------------------------------- Internal Helpers -------------------------------------- //
+// --------------------------------- Types, Constants & Variables ------------------------------- //
 
 /// Braille spinner frames cycled through by [`spinner_frame`].
 const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
+// ------------------------------------- Public (crate) API ------------------------------------- //
+
 /// Fills a modal area with the theme background so content beneath is wiped
 /// (this is the theme-aware equivalent of `Clear` and keeps light schemes solid).
+///
+/// `Clear` first resets every cell of the area to a blank space, wiping any
+/// dashboard glyphs sitting behind the modal; the bg-only `Block` then paints
+/// the theme background on top. A bg-only `Block` alone would merely *restyle*
+/// the existing cells, leaving stale symbols visible as noise (the ghost text
+/// that bled through the theme picker's margins and empty spaces).
 pub(crate) fn clear_area(frame: &mut Frame, area: Rect, theme: &Theme) {
+    // 1) Erase symbols (Block::render only sets styles, never clears glyphs).
+    frame.render_widget(Clear, area);
+    // 2) Paint the theme background so light schemes stay solid.
     frame.render_widget(Block::default().style(Style::default().bg(theme.bg)), area);
-}
-
-/// Returns the current braille spinner glyph for the given animation tick.
-fn spinner_frame(tick: u64) -> &'static str {
-    // The modulo keeps the index in bounds regardless of pointer width.
-    #[allow(clippy::cast_possible_truncation)]
-    let idx = (tick as usize) % SPINNER.len();
-    SPINNER[idx]
 }
 
 /// A styled, animated spinner span (with a leading space).
@@ -100,4 +103,14 @@ pub(crate) fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+// -------------------------------------- Internal Helpers -------------------------------------- //
+
+/// Returns the current braille spinner glyph for the given animation tick.
+fn spinner_frame(tick: u64) -> &'static str {
+    // The modulo keeps the index in bounds regardless of pointer width.
+    #[allow(clippy::cast_possible_truncation)]
+    let idx = (tick as usize) % SPINNER.len();
+    SPINNER[idx]
 }
