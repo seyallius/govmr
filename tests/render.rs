@@ -289,11 +289,11 @@ fn selection_navigation_wraps_within_visible_list() {
     let mut state = AppState::from_versions(versions_fixture(), true);
     state.next_item();
     state.next_item();
-    assert!(state.list_state.selected() == Some(2));
+    assert_eq!(state.list_state.selected(), Some(2));
     state.next_item();
-    assert!(state.list_state.selected() == Some(0), "wraps to top");
+    assert_eq!(state.list_state.selected(), Some(0), "wraps to top");
     state.previous_item();
-    assert!(state.list_state.selected() == Some(2), "wraps to bottom");
+    assert_eq!(state.list_state.selected(), Some(2), "wraps to bottom");
 }
 
 #[test]
@@ -327,8 +327,10 @@ fn renders_command_help_panel_docked_right() {
 fn command_help_panel_scrolls_to_reveal_lower_commands() {
     let mut terminal = make_terminal();
     let mut state = AppState::from_versions(versions_fixture(), true);
+
     state.show_command_help = true;
     state.command_help_scroll = usize::MAX; // Jump far past the end.
+
     terminal
         .draw(|f| {
             render(f, &mut state);
@@ -336,16 +338,21 @@ fn command_help_panel_scrolls_to_reveal_lower_commands() {
         })
         .unwrap();
 
-    // The draw clamps the offset back to a valid window at the bottom of the list.
+    // 1. The draw should have clamped the offset back to a valid window.
     assert!(
         state.command_help_scroll < usize::MAX,
         "scroll offset should be clamped on render"
     );
+
     let text = buffer_as_text(terminal.backend().buffer());
+
+    // 2. The bottom binding should be visible after scrolling to the end.
     assert!(
-        text.contains("Decline / cancel"),
+        text.contains("esc close"),
         "the bottom binding should become visible after scrolling"
     );
+
+    // 3. The top binding should have scrolled out of view.
     assert!(
         !text.contains("Quit from any screen"),
         "the top binding should scroll out of view"

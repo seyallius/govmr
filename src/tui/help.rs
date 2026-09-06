@@ -7,15 +7,15 @@
 
 use super::widgets::clear_area;
 use crate::{
-    app::{AppState, HelpEntry, COMMAND_REFERENCE},
+    app::{AppState, COMMAND_REFERENCE, HelpEntry},
     theme::Theme,
 };
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::Style,
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
-    Frame,
 };
 
 // ------------------------------------- Public (crate) API ------------------------------------- //

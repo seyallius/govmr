@@ -12,7 +12,7 @@ use crate::{
     logging,
     shim::ShimManager,
     theme::{Theme, ThemeName},
-    version::{compare_versions, GoRelease, GoVersion},
+    version::{GoRelease, GoVersion, compare_versions},
 };
 use std::fs::File;
 use std::{
@@ -64,7 +64,7 @@ impl GoManager {
             shim_mgr: ShimManager::new()?,
             config,
             client: reqwest::Client::builder()
-                .timeout(Duration::from_secs(300))
+                .timeout(Duration::from_mins(5))
                 .build()?,
         })
     }
