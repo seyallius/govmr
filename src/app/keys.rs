@@ -393,7 +393,7 @@ fn handle_main_shortcut_key(
         KeyCode::Tab => app.switch_tab(),
         KeyCode::Down | KeyCode::Char('j') => app.next_item(),
         KeyCode::Up | KeyCode::Char('k') => app.previous_item(),
-        KeyCode::Char('/') => {
+        KeyCode::Char('/') if !app.is_busy() => {
             app.state.filter_mode = true;
         }
         KeyCode::Char('T') => {
@@ -447,10 +447,10 @@ fn handle_main_shortcut_key(
                 }
             }
         }
-        KeyCode::Char('U') if !app.is_busy() => {
+        KeyCode::Char('U') => {
             app.state.system_prompt = Some(SystemPrompt::Update);
         }
-        KeyCode::Char('X') if !app.is_busy() => {
+        KeyCode::Char('X') => {
             app.state.system_prompt = Some(SystemPrompt::UninstallKeep);
         }
         _ => {}
