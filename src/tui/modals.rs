@@ -148,7 +148,7 @@ pub(crate) fn render_system_prompt(
     prompt: SystemPrompt,
     theme: &Theme,
 ) {
-    let area = centered_rect(50, 20, screen);
+    let area = centered_rect(50, 29, screen);
     clear_area(frame, area, theme);
 
     let (title, msg, color) = match prompt {
