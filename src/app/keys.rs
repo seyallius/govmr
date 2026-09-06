@@ -359,23 +359,39 @@ fn handle_system_prompt_key(
             match prompt {
                 SystemPrompt::Update => {
                     let _ = action_tx.send(Action::Update);
+                    app.state.system_prompt = None;
                 }
                 SystemPrompt::UninstallKeep => {
-                    let _ = action_tx.send(Action::Uninstall(false));
+                    // First yes = proceed to purge question
+                    app.state.system_prompt = Some(SystemPrompt::UninstallPurge);
                 }
                 SystemPrompt::UninstallPurge => {
+                    // Second yes = actually uninstall with purge
                     let _ = action_tx.send(Action::Uninstall(true));
+                    app.state.system_prompt = None;
                 }
             }
-            app.state.system_prompt = None;
         }
-        KeyCode::Char('n' | 'N') | KeyCode::Esc => {
-            if prompt == SystemPrompt::UninstallKeep {
-                // Ask if they want to purge instead
-                app.state.system_prompt = Some(SystemPrompt::UninstallPurge);
-            } else {
-                app.state.system_prompt = None;
+        // 'p' only works on the first uninstall prompt to escalate to Purge
+        KeyCode::Char('p' | 'P') if prompt == SystemPrompt::UninstallKeep => {
+            app.state.system_prompt = Some(SystemPrompt::UninstallPurge);
+        }
+        KeyCode::Char('n' | 'N') => {
+            match prompt {
+                // On second prompt, n means "No purge, just remove binary"
+                SystemPrompt::UninstallPurge => {
+                    let _ = action_tx.send(Action::UninstallBinaryOnly);
+                    app.state.system_prompt = None;
+                }
+                // Any other command (e.g., SystemPrompt::UninstallKeep) n cancels entirely
+                _ => {
+                    app.state.system_prompt = None;
+                }
             }
+        }
+        // Esc and c ALWAYS cancel completely
+        KeyCode::Esc | KeyCode::Char('c') => {
+            app.state.system_prompt = None;
         }
         _ => {}
     }

@@ -29,9 +29,11 @@ pub enum Action {
     FixPath,
     /// Update the govmr binary to the latest version.
     Update,
+    /// Uninstall govmr, optionally purging ~/.govmr.
+    Uninstall(bool),
+    /// Uninstall govmr binary only (triggered by 'n' on purge prompt).
+    UninstallBinaryOnly,
     /// Self-update finished; carries the user-facing summary line
     /// ("updated, restart" or "already latest").
     UpdateDone(String),
-    /// Uninstall govmr, optionally purging ~/.govmr.
-    Uninstall(bool),
 }

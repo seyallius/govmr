@@ -8,11 +8,11 @@ use crate::{
     version::GoVersion,
 };
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Gauge, List, ListItem, ListState, Paragraph},
+    Frame,
 };
 
 // ------------------------------------- Public (crate) API ------------------------------------- //
@@ -148,24 +148,48 @@ pub(crate) fn render_system_prompt(
     prompt: SystemPrompt,
     theme: &Theme,
 ) {
-    let area = centered_rect(50, 29, screen);
+    // Dynamic height: Target ~10 rows minimum, clamped between 17% and 25% of screen.
+    // This ensures it's never too small (thin bar) or too huge.
+    let min_rows = 7;
+    let height_percent = (min_rows * 100) / screen.height;
+    let height_percent = height_percent.clamp(17, 26);
+
+    let area = centered_rect(50, height_percent, screen);
     clear_area(frame, area, theme);
 
-    let (title, msg, color) = match prompt {
+    let (title, msg, color, buttons) = match prompt {
         SystemPrompt::Update => (
             " 🔄 Update ",
             "Download and install the latest govmr version?",
             theme.highlight(),
+            vec![
+                Span::styled(" [y] ", theme.success().add_modifier(Modifier::BOLD)),
+                Span::styled("Yes   ", theme.muted()),
+                Span::styled(" [n/c/esc] ", theme.error().add_modifier(Modifier::BOLD)),
+                Span::styled("Cancel", theme.muted()),
+            ],
         ),
         SystemPrompt::UninstallKeep => (
             " 🗑️ Uninstall ",
-            "Remove govmr binary but KEEP ~/.govmr?",
+            "Remove govmr binary?",
             theme.warning(),
+            vec![
+                Span::styled(" [y] ", theme.success().add_modifier(Modifier::BOLD)),
+                Span::styled("Uninstall   ", theme.muted()),
+                Span::styled(" [n/c/esc] ", theme.error().add_modifier(Modifier::BOLD)),
+                Span::styled("Cancel", theme.muted()),
+            ],
         ),
         SystemPrompt::UninstallPurge => (
             " 🚨 Purge ",
-            "DELETE ~/.govmr and ALL installed Go versions?",
+            "Also DELETE ~/.govmr and ALL installed Go versions?",
             theme.error(),
+            vec![
+                Span::styled(" [y] ", theme.success().add_modifier(Modifier::BOLD)),
+                Span::styled("Yes, Delete Everything   ", theme.muted()),
+                Span::styled(" [n/c/esc] ", theme.error().add_modifier(Modifier::BOLD)),
+                Span::styled("Cancel", theme.muted()),
+            ],
         ),
     };
 
@@ -181,24 +205,15 @@ pub(crate) fn render_system_prompt(
         horizontal: 2,
         vertical: 1,
     });
+
+    // Center the content vertically/horizontally
     let text = vec![
         Line::from(""),
         Line::from(Span::styled(msg, theme.modal_body())),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("   [y] ", theme.success().add_modifier(Modifier::BOLD)),
-            Span::styled("Yes     ", theme.muted()),
-            Span::styled("[n/esc] ", theme.error().add_modifier(Modifier::BOLD)),
-            Span::styled(
-                if prompt == SystemPrompt::UninstallKeep {
-                    "No (Purge instead)"
-                } else {
-                    "Cancel"
-                },
-                theme.muted(),
-            ),
-        ]),
+        Line::from(buttons),
     ];
+
     frame.render_widget(Paragraph::new(text).alignment(Alignment::Center), inner);
 }
 

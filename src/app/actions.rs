@@ -41,8 +41,9 @@ pub async fn handle_actions(
             Action::Delete(v) => handle_delete(app, manager, action_tx, &v),
             Action::FixPath => handle_fix_path(app, manager),
             Action::Update => spawn_update(app, manager, action_tx),
-            Action::UpdateDone(msg) => app.set_status(msg, MsgKind::Success),
             Action::Uninstall(purge) => handle_uninstall(app, manager, purge),
+            Action::UninstallBinaryOnly => handle_uninstall(app, manager, false),
+            Action::UpdateDone(msg) => app.set_status(msg, MsgKind::Success),
         }
     }
     Ok(())
@@ -305,6 +306,11 @@ fn handle_uninstall(app: &mut App, manager: &Arc<GoManager>, purge: bool) {
     if let Err(e) = manager.uninstall(purge) {
         app.set_status(format!("Uninstall failed: {e}"), MsgKind::Error);
     } else {
-        app.set_status("govmr uninstalled. Press q to exit.", MsgKind::Success);
+        let msg = if purge {
+            "govmr uninstalled and ~/.govmr purged. Press q to exit."
+        } else {
+            "govmr binary removed. ~/.govmr kept intact. Press q to exit."
+        };
+        app.set_status(msg, MsgKind::Success);
     }
 }
