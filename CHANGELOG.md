@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0](https://github.com/seyallius/govmr/compare/v0.4.0...v1.0.0) - 2026-09-06
+
+### Added
+
+- *(uninstall)* add binary-only removal option and clearer confirmation flow
+- *(keys)* allow filter and system prompts even when busy
+- *(update)* add status message feedback for self-update operations
+- *(tui)* use Shift+U/X for update/uninstall and simplify help
+- *(tui)* add dimmed overlay effect for modals and prompts
+- *(tui)* add right-docked keyboard help panel with scrolling and maintenance shortcuts
+- *(self-update)* add self-update/uninstall with TUI prompts and CLI commands
+
+### Fixed
+
+- *(clippy)* address clippy warnings and failing render tests
+- *(tui)* increase system prompt modal height to 29 rows
+- *(update)* gracefully handle 404 when no public releases exist
+- *(build)* align binstall pkg-url template with release asset naming
+
+### Other
+
+- *(release)* bump version to 1.0.0 and refresh README assets
+- *(readme)* [**breaking**] comprehensive rewrite with badges, demos, and updated content
+- fix doc comment formatting and constant reference
+
 ## [0.4.0](https://github.com/seyallius/govmr/compare/v0.3.1...v0.4.0) - 2026-09-06
 
 ### Added
