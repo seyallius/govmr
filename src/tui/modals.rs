@@ -31,7 +31,7 @@ pub(crate) fn render_theme_picker(
     match state.theme_picker.view {
         ThemePickerView::Categories => render_picker_categories(frame, screen, state, theme),
         ThemePickerView::Family(family) => {
-            render_picker_family(frame, screen, state, family, theme)
+            render_picker_family(frame, screen, state, family, theme);
         }
     }
 }
@@ -210,7 +210,7 @@ fn render_picker_categories(frame: &mut Frame, screen: Rect, state: &AppState, t
             Span::styled("esc", theme.key_hint()),
             Span::styled(" cancel ", theme.muted()),
         ]))
-            .alignment(Alignment::Center),
+        .alignment(Alignment::Center),
         chunks[1],
     );
 }
@@ -290,7 +290,7 @@ fn render_picker_family(
             Span::styled("←/esc", theme.key_hint()),
             Span::styled(" back ", theme.muted()),
         ]))
-            .alignment(Alignment::Center),
+        .alignment(Alignment::Center),
         chunks[1],
     );
 }

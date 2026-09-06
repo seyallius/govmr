@@ -18,7 +18,7 @@ pub enum ThemeName {
     /// The default Go-brand cyan look.
     #[default]
     GoCyan,
-    /// JetBrains "New Island" — deep blue-slate with a bright azure accent.
+    /// `JetBrains` "New Island" — deep blue-slate with a bright azure accent.
     JetBrainsNewIsland,
     /// Cursor editor dark — near-black with a soft indigo glow.
     CursorDark,
@@ -285,6 +285,7 @@ pub struct Theme {
 impl Theme {
     /// Builds the palette for the named scheme.
     #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn for_name(name: ThemeName) -> Theme {
         match name {
             ThemeName::GoCyan => Theme {
