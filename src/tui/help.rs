@@ -31,9 +31,10 @@ pub(crate) fn render_command_help(
     state: &mut AppState,
     theme: &Theme,
 ) {
+    clear_area(frame, area, theme);
     let block = Block::default()
         .title(Line::from(vec![
-            Span::styled(" ⌨ ", Style::default().fg(theme.brand)),
+            Span::styled(" ? ", Style::default().fg(theme.brand)),
             Span::styled("Keyboard Help", theme.title()),
         ]))
         .borders(Borders::ALL)

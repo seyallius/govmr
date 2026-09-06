@@ -11,16 +11,16 @@ use super::{
     widgets::{right_pad, shorten_path, tilde_path},
 };
 use crate::{
-    app::{ActiveTab, AppState, BusyState, visible_indices},
+    app::{visible_indices, ActiveTab, AppState, BusyState},
     theme::Theme,
     version::GoVersion,
 };
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph, Tabs},
+    Frame,
 };
 
 // ----------------------------------------- Public API ----------------------------------------- //
@@ -142,12 +142,15 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         render_footer(frame, footer_chunk, state, &theme);
     }
 
-    if let Some(area) = help_area {
-        render_command_help(frame, area, state, &theme);
-    }
-
     if let Some(area) = log_area {
         render_log_panel(frame, area, state, &theme);
+    }
+
+    if state.show_command_help {
+        dim_area(frame, size, &theme);
+        if let Some(area) = help_area {
+            render_command_help(frame, area, state, &theme);
+        }
     }
 }
 
@@ -155,6 +158,10 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
 pub fn render_overlays(frame: &mut Frame, state: &AppState) {
     let size = frame.area();
     let theme = state.theme;
+
+    if state.system_prompt.is_some() {
+        dim_area(frame, size, &theme);
+    }
 
     if let Some(busy) = &state.busy
         && matches!(busy, BusyState::Installing { .. })
@@ -468,4 +475,18 @@ fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme)
         Paragraph::new(Line::from(spans)).alignment(Alignment::Center),
         area,
     );
+}
+
+/// Heavily dims every cell inside `area` (ghost-text effect) so an overlay
+/// panel visually floats above the dashboard.
+///
+/// Glyphs are kept but recolored to the theme's quiet chrome color on the
+/// plain background — a faint afterimage on both dark and light schemes.
+fn dim_area(frame: &mut Frame, area: Rect, theme: &Theme) {
+    let buf = frame.buffer_mut();
+    for y in area.top()..area.bottom() {
+        for x in area.left()..area.right() {
+            buf[(x, y)].set_style(Style::default().fg(theme.dim).bg(theme.bg));
+        }
+    }
 }
