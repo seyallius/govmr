@@ -1,8 +1,11 @@
 //! Module dashboard - Main dashboard layout composition, chrome, and version list rendering.
 
 use super::{
+    help::render_command_help,
     logs::render_log_panel,
-    modals::{render_delete_modal, render_install_modal, render_theme_picker},
+    modals::{
+        render_delete_modal, render_install_modal, render_system_prompt, render_theme_picker,
+    },
     setup::draw_setup_modal,
     status::render_status_bar,
     widgets::{right_pad, shorten_path, tilde_path},
@@ -81,6 +84,18 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         (inner, None)
     };
 
+    // Dock the keyboard help panel to the right when open; the dashboard body
+    // keeps the left-hand two thirds and stays fully interactive underneath.
+    let (body_area, help_area) = if state.show_command_help {
+        let split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(5), Constraint::Percentage(44)])
+            .split(dash_inner);
+        (split[0], Some(split[1]))
+    } else {
+        (dash_inner, None)
+    };
+
     // ---- Vertical layout --------------------------------------------------------------------- //
     let show_warning = !state.is_shim_in_path;
     let mut constraints = Vec::with_capacity(5);
@@ -95,7 +110,7 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(constraints)
-        .split(dash_inner);
+        .split(body_area);
 
     // A centered modal covers the chrome areas; hide the pieces that would
     // otherwise bleed through the modal edges. The theme picker is deliberately
@@ -130,12 +145,23 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     if let Some(area) = log_area {
         render_log_panel(frame, area, state, &theme);
     }
+
+    if state.show_command_help {
+        dim_area(frame, size, &theme);
+        if let Some(area) = help_area {
+            render_command_help(frame, area, state, &theme);
+        }
+    }
 }
 
 /// Draws top-level modal overlays (theme picker, install progress, delete, help).
 pub fn render_overlays(frame: &mut Frame, state: &AppState) {
     let size = frame.area();
     let theme = state.theme;
+
+    if state.system_prompt.is_some() {
+        dim_area(frame, size, &theme);
+    }
 
     if let Some(busy) = &state.busy
         && matches!(busy, BusyState::Installing { .. })
@@ -159,6 +185,10 @@ pub fn render_overlays(frame: &mut Frame, state: &AppState) {
 
     if state.show_theme_picker {
         render_theme_picker(frame, size, state, &theme);
+    }
+
+    if let Some(prompt) = state.system_prompt {
+        render_system_prompt(frame, size, prompt, &theme);
     }
 }
 
@@ -433,6 +463,11 @@ fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme)
             spans.extend(hint("`", "focus"));
         }
         spans.extend(hint("r", "refresh"));
+        if state.show_command_help {
+            spans.extend(hint("esc", "close"));
+        } else {
+            spans.extend(hint("?", "help"));
+        }
         spans.extend(hint("q", "quit"));
     }
 
@@ -440,4 +475,18 @@ fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme)
         Paragraph::new(Line::from(spans)).alignment(Alignment::Center),
         area,
     );
+}
+
+/// Heavily dims every cell inside `area` (ghost-text effect) so an overlay
+/// panel visually floats above the dashboard.
+///
+/// Glyphs are kept but recolored to the theme's quiet chrome color on the
+/// plain background — a faint afterimage on both dark and light schemes.
+fn dim_area(frame: &mut Frame, area: Rect, theme: &Theme) {
+    let buf = frame.buffer_mut();
+    for y in area.top()..area.bottom() {
+        for x in area.left()..area.right() {
+            buf[(x, y)].set_style(Style::default().fg(theme.dim).bg(theme.bg));
+        }
+    }
 }

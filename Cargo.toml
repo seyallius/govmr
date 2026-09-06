@@ -14,8 +14,8 @@ categories = ["command-line-utilities", "development-tools"]
 rust-version = "1.93.0"
 
 [package.metadata.binstall]
-pkg-url = "{repo}/releases/download/v{version}/{name}-{version}-{target}.{archive-format}"
-bin-dir = "{bin}{binary-ext}"
+pkg-url = "{repo}/releases/download/v{version}/{name}-v{version}-{target}.{archive-format}"
+bin-dir = "{name}{binary-ext}"
 
 [package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
 archive-format = "zip"
@@ -47,6 +47,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 
 # Serialization & Parsing
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.151"
 
 # Terminal UI & CLI Parsing
 ratatui = "0.29"

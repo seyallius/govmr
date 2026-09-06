@@ -5,6 +5,7 @@
 //! capture (help, theme picker, delete confirmation, filter mode), then the
 //! main shortcut set.
 
+use crate::app::state::SystemPrompt;
 use crate::{
     app::{Action, App, MsgKind},
     logging,
@@ -13,7 +14,6 @@ use crate::{
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::text::{Line, Span};
 use tokio::sync::mpsc::UnboundedSender;
-
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// How the event loop should proceed after a key has been handled.
@@ -53,6 +53,9 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
     if let Some(target) = app.state.confirming_delete.take() {
         return handle_confirm_delete_key(key, app, action_tx, &target);
     }
+    if let Some(outcome) = handle_command_help_key(key, app) {
+        return outcome;
+    }
     if app.state.filter_mode {
         return handle_filter_key(key, app);
     }
@@ -61,6 +64,9 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
     }
     if let Some(outcome) = handle_log_panel_key(key, app) {
         return outcome;
+    }
+    if let Some(prompt) = app.state.system_prompt {
+        return handle_system_prompt_key(key, app, action_tx, prompt);
     }
 
     handle_main_shortcut_key(key, app, action_tx)
@@ -179,6 +185,62 @@ fn handle_confirm_delete_key(
     KeyOutcome::Continue
 }
 
+/// Handles keys while the right-docked keyboard help panel is open.
+///
+/// While the panel is shown it swallows navigation keys (so they scroll the
+/// command catalogue instead of the version list) plus `?`/Esc to close it and
+/// `q`/Ctrl-C to quit. `u` and `x` launch the self-update / self-uninstall
+/// confirmations (they mean those maintenance actions only while this panel is
+/// open — on the main dashboard `u` switches the active version). Any other key
+/// is ignored so reading the list can never trigger an unrelated action.
+fn handle_command_help_key(key: KeyEvent, app: &mut App) -> Option<KeyOutcome> {
+    if !app.state.show_command_help {
+        return None;
+    }
+    Some(match key.code {
+        KeyCode::Char('?') | KeyCode::Esc => {
+            app.close_command_help();
+            KeyOutcome::Continue
+        }
+        KeyCode::Char('U') => {
+            app.state.system_prompt = Some(SystemPrompt::Update);
+            app.close_command_help();
+            KeyOutcome::Continue
+        }
+        KeyCode::Char('X') => {
+            app.state.system_prompt = Some(SystemPrompt::UninstallKeep);
+            app.close_command_help();
+            KeyOutcome::Continue
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.scroll_command_help(1);
+            KeyOutcome::Continue
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.scroll_command_help(-1);
+            KeyOutcome::Continue
+        }
+        KeyCode::PageDown => {
+            app.scroll_command_help(8);
+            KeyOutcome::Continue
+        }
+        KeyCode::PageUp => {
+            app.scroll_command_help(-8);
+            KeyOutcome::Continue
+        }
+        KeyCode::Home | KeyCode::Char('g') => {
+            app.scroll_command_help(i64::MIN);
+            KeyOutcome::Continue
+        }
+        KeyCode::End | KeyCode::Char('G') => {
+            app.scroll_command_help(i64::MAX);
+            KeyOutcome::Continue
+        }
+        KeyCode::Char('q') => KeyOutcome::Quit,
+        _ => KeyOutcome::Continue,
+    })
+}
+
 /// Handles text input while a filter query is being typed.
 fn handle_filter_key(key: KeyEvent, app: &mut App) -> KeyOutcome {
     match key.code {
@@ -286,6 +348,56 @@ fn handle_log_panel_key(key: KeyEvent, app: &mut App) -> Option<KeyOutcome> {
     })
 }
 
+fn handle_system_prompt_key(
+    key: KeyEvent,
+    app: &mut App,
+    action_tx: &UnboundedSender<Action>,
+    prompt: SystemPrompt,
+) -> KeyOutcome {
+    match key.code {
+        KeyCode::Char('y' | 'Y') => {
+            match prompt {
+                SystemPrompt::Update => {
+                    let _ = action_tx.send(Action::Update);
+                    app.state.system_prompt = None;
+                }
+                SystemPrompt::UninstallKeep => {
+                    // First yes = proceed to purge question
+                    app.state.system_prompt = Some(SystemPrompt::UninstallPurge);
+                }
+                SystemPrompt::UninstallPurge => {
+                    // Second yes = actually uninstall with purge
+                    let _ = action_tx.send(Action::Uninstall(true));
+                    app.state.system_prompt = None;
+                }
+            }
+        }
+        // 'p' only works on the first uninstall prompt to escalate to Purge
+        KeyCode::Char('p' | 'P') if prompt == SystemPrompt::UninstallKeep => {
+            app.state.system_prompt = Some(SystemPrompt::UninstallPurge);
+        }
+        KeyCode::Char('n' | 'N') => {
+            match prompt {
+                // On second prompt, n means "No purge, just remove binary"
+                SystemPrompt::UninstallPurge => {
+                    let _ = action_tx.send(Action::UninstallBinaryOnly);
+                    app.state.system_prompt = None;
+                }
+                // Any other command (e.g., SystemPrompt::UninstallKeep) n cancels entirely
+                _ => {
+                    app.state.system_prompt = None;
+                }
+            }
+        }
+        // Esc and c ALWAYS cancel completely
+        KeyCode::Esc | KeyCode::Char('c') => {
+            app.state.system_prompt = None;
+        }
+        _ => {}
+    }
+    KeyOutcome::Continue
+}
+
 /// Handles the main dashboard shortcuts once no modal captured the key.
 fn handle_main_shortcut_key(
     key: KeyEvent,
@@ -297,7 +409,7 @@ fn handle_main_shortcut_key(
         KeyCode::Tab => app.switch_tab(),
         KeyCode::Down | KeyCode::Char('j') => app.next_item(),
         KeyCode::Up | KeyCode::Char('k') => app.previous_item(),
-        KeyCode::Char('/') => {
+        KeyCode::Char('/') if !app.is_busy() => {
             app.state.filter_mode = true;
         }
         KeyCode::Char('T') => {
@@ -306,8 +418,14 @@ fn handle_main_shortcut_key(
         KeyCode::Char('L') => {
             app.open_logs();
         }
-        KeyCode::Char('h' | '?') => {
-            app.state.show_help = true;
+        KeyCode::Char('?') => {
+            app.toggle_command_help();
+        }
+        KeyCode::Char('h') => {
+            // The PATH-setup overlay is only relevant while the shim is missing;
+            if !app.state.is_shim_in_path {
+                app.state.show_help = true;
+            }
         }
         KeyCode::Char('r') if !app.is_busy() => {
             let _ = action_tx.send(Action::Refresh);
@@ -344,6 +462,12 @@ fn handle_main_shortcut_key(
                     app.state.confirming_delete = Some(v.raw_version.clone());
                 }
             }
+        }
+        KeyCode::Char('U') => {
+            app.state.system_prompt = Some(SystemPrompt::Update);
+        }
+        KeyCode::Char('X') => {
+            app.state.system_prompt = Some(SystemPrompt::UninstallKeep);
         }
         _ => {}
     }

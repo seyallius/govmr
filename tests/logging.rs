@@ -49,7 +49,7 @@ fn writes_timestamped_level_lines() {
     assert_eq!(&first[7..8], "-");
     assert_eq!(&first[10..11], " ");
     assert_eq!(&first[13..14], ":");
-    assert!(first.get(19..20) == Some("Z"));
+    assert_eq!(first.get(19..20), Some("Z"));
 }
 
 #[test]

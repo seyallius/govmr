@@ -40,6 +40,10 @@ pub async fn handle_actions(
             Action::Use(v) => handle_use(app, manager, &v),
             Action::Delete(v) => handle_delete(app, manager, action_tx, &v),
             Action::FixPath => handle_fix_path(app, manager),
+            Action::Update => spawn_update(app, manager, action_tx),
+            Action::Uninstall(purge) => handle_uninstall(app, manager, purge),
+            Action::UninstallBinaryOnly => handle_uninstall(app, manager, false),
+            Action::UpdateDone(msg) => app.set_status(msg, MsgKind::Success),
         }
     }
     Ok(())
@@ -261,5 +265,52 @@ fn handle_fix_path(app: &mut App, manager: &Arc<GoManager>) {
             logging::error(&format!("fix-path failed: {e}"));
             app.set_status(format!("Could not fix PATH: {e}"), MsgKind::Error);
         }
+    }
+}
+
+/// Spawns the background self-update check.
+fn spawn_update(
+    app: &mut App,
+    manager: &Arc<GoManager>,
+    action_tx: &mpsc::UnboundedSender<Action>,
+) {
+    app.set_status("Checking for updates...", MsgKind::Info);
+    let mgr = manager.clone();
+    let tx = action_tx.clone();
+
+    tokio::spawn(async move {
+        match mgr.check_for_update().await {
+            Ok(Some(ver)) => {
+                if let Err(e) = mgr.perform_update(&ver).await {
+                    let _ = tx.send(Action::InstallFailed(format!("Update failed: {e}")));
+                } else {
+                    let _ = tx.send(Action::UpdateDone(format!(
+                        "Updated to v{ver}! Restart govmr to run it."
+                    )));
+                }
+            }
+            Ok(None) => {
+                // Already up to date
+                let _ = tx.send(Action::UpdateDone(
+                    "You are already on the latest version.".to_string(),
+                ));
+            }
+            Err(e) => {
+                let _ = tx.send(Action::InstallFailed(e.to_string()));
+            }
+        }
+    });
+}
+
+fn handle_uninstall(app: &mut App, manager: &Arc<GoManager>, purge: bool) {
+    if let Err(e) = manager.uninstall(purge) {
+        app.set_status(format!("Uninstall failed: {e}"), MsgKind::Error);
+    } else {
+        let msg = if purge {
+            "govmr uninstalled and ~/.govmr purged. Press q to exit."
+        } else {
+            "govmr binary removed. ~/.govmr kept intact. Press q to exit."
+        };
+        app.set_status(msg, MsgKind::Success);
     }
 }

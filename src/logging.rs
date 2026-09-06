@@ -88,7 +88,7 @@ pub fn init_in(path: &Path) {
 /// Moves an oversized log file aside so a fresh one can start.
 ///
 /// `<path>` becomes `<path>.old` (overwriting any previous rotation). Files at or
-/// under [`MAX_LOG_BYTES`] are left untouched.
+/// under `MAX_LOG_BYTES` are left untouched.
 pub fn rotate_if_oversized(path: &Path) {
     if let Ok(meta) = fs::metadata(path)
         && meta.len() > MAX_LOG_BYTES
@@ -148,8 +148,7 @@ fn timestamp() -> String {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         // Saturates instead of wrapping; epoch seconds never reach i64::MAX.
-        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
-        .unwrap_or(0);
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
     format_unix(secs)
 }
 

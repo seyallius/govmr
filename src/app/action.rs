@@ -27,4 +27,13 @@ pub enum Action {
     /// Apply the permanent PATH fix by running the platform snippet in a
     /// hidden child process (the `f` key in the setup/help overlay).
     FixPath,
+    /// Update the govmr binary to the latest version.
+    Update,
+    /// Uninstall govmr, optionally purging ~/.govmr.
+    Uninstall(bool),
+    /// Uninstall govmr binary only (triggered by 'n' on purge prompt).
+    UninstallBinaryOnly,
+    /// Self-update finished; carries the user-facing summary line
+    /// ("updated, restart" or "already latest").
+    UpdateDone(String),
 }

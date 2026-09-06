@@ -110,6 +110,17 @@ pub struct ThemePickerState {
     pub theme_cursor: usize,
 }
 
+/// Tracks pending destructive/system actions requiring confirmation.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SystemPrompt {
+    /// Prompt the user to confirm downloading and applying the latest govmr update.
+    Update,
+    /// Prompt the user to confirm uninstalling the govmr binary while keeping `~/.govmr`.
+    UninstallKeep,
+    /// Prompt the user to confirm uninstalling the govmr binary AND purging `~/.govmr`.
+    UninstallPurge,
+}
+
 /// Holds all state variables required for rendering and interacting with the TUI.
 /// A flat bag of independent UI toggles: they combine freely, so neither a
 /// state machine nor grouped bool enums would model them more accurately.
@@ -137,6 +148,10 @@ pub struct AppState {
     pub filter_mode: bool,
     /// Whether the PATH-setup help overlay is displayed.
     pub show_help: bool,
+    /// Whether the right-docked keyboard help panel is currently displayed.
+    pub show_command_help: bool,
+    /// Vertical scroll offset (in content lines) of the keyboard help panel.
+    pub command_help_scroll: usize,
     /// Whether the color-theme picker overlay is displayed.
     pub show_theme_picker: bool,
     /// Two-level theme-picker navigation (folder → theme) state.
@@ -164,6 +179,8 @@ pub struct AppState {
     pub log_wrap: bool,
     /// Sender used to signal cancellation of an ongoing installation.
     pub cancel_install: Option<tokio::sync::watch::Sender<bool>>,
+    /// Tracks which system-level confirmation modal (Update/Uninstall) is currently active.
+    pub system_prompt: Option<SystemPrompt>,
 }
 impl AppState {
     /// Constructs a fresh state for the supplied version list (used by tests/setup).
@@ -186,6 +203,8 @@ impl AppState {
             filter: String::new(),
             filter_mode: false,
             show_help: false,
+            show_command_help: false,
+            command_help_scroll: 0,
             show_theme_picker: false,
             theme_picker: ThemePickerState::default(),
             theme,
@@ -199,6 +218,7 @@ impl AppState {
             log_focus: false,
             log_wrap: false,
             cancel_install: None,
+            system_prompt: None,
         }
     }
 

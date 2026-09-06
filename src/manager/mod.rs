@@ -14,6 +14,7 @@ use crate::{
     theme::{Theme, ThemeName},
     version::{GoRelease, GoVersion, compare_versions},
 };
+use std::fs::File;
 use std::{
     env::consts::{ARCH, OS},
     fs,
@@ -63,7 +64,7 @@ impl GoManager {
             shim_mgr: ShimManager::new()?,
             config,
             client: reqwest::Client::builder()
-                .timeout(Duration::from_secs(300))
+                .timeout(Duration::from_mins(5))
                 .build()?,
         })
     }
@@ -324,5 +325,151 @@ impl GoManager {
                 "Open a NEW terminal (or source it) for `go` to resolve.".to_string(),
             ])
         }
+    }
+
+    /// Checks GitHub for a newer release tag. Returns `Some(version)` if an update is available.
+    ///
+    /// # Errors
+    /// Returns [`GovmError`] if the release query or its response parsing fails.
+    pub async fn check_for_update(&self) -> Result<Option<String>, GovmError> {
+        let res = self
+            .client
+            .get("https://api.github.com/repos/seyallius/govmr/releases/latest")
+            .header("User-Agent", "govmr")
+            .send()
+            .await?;
+
+        if res.status().as_u16() == 404 {
+            logging::info("update: no public releases published yet");
+            return Ok(None);
+        }
+
+        let json: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| GovmError::Extraction(e.to_string()))?;
+        let tag = json["tag_name"]
+            .as_str()
+            .unwrap_or("")
+            .trim_start_matches('v');
+        let current = env!("CARGO_PKG_VERSION");
+
+        if !tag.is_empty() && tag != current {
+            Ok(Some(tag.to_string()))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Downloads the latest release archive, extracts the binary, and replaces the current executable.
+    ///
+    /// # Errors
+    /// Returns [`GovmError`] if any download, archive-extraction, or file-replacement step fails.
+    pub async fn perform_update(&self, version: &str) -> Result<(), GovmError> {
+        let os = match OS {
+            "macos" => "apple-darwin",
+            "linux" => "unknown-linux-gnu",
+            "windows" => "pc-windows-msvc",
+            other => other,
+        };
+        let arch = ARCH;
+        let target = format!("{arch}-{os}");
+        let ext = if cfg!(windows) { "zip" } else { "tar.gz" };
+
+        let url = format!(
+            "https://github.com/seyallius/govmr/releases/download/v{version}/govmr-v{version}-{target}.{ext}"
+        );
+
+        logging::info(&format!("update: downloading {url}"));
+        let res = self.client.get(&url).send().await?;
+        let bytes = res.bytes().await?;
+
+        let temp_dir = std::env::temp_dir().join("govmr_update");
+        let _ = fs::create_dir_all(&temp_dir);
+        let archive_path = temp_dir.join(format!("govmr.{ext}"));
+        fs::write(&archive_path, &bytes)?;
+
+        let bin_name = if cfg!(windows) { "govmr.exe" } else { "govmr" };
+        let new_bin_path = temp_dir.join(bin_name);
+
+        // Extract the binary
+        if cfg!(windows) {
+            let mut archive = zip::ZipArchive::new(File::open(&archive_path)?)
+                .map_err(|e| GovmError::Extraction(e.to_string()))?;
+            for i in 0..archive.len() {
+                let mut file = archive
+                    .by_index(i)
+                    .map_err(|e| GovmError::Extraction(e.to_string()))?;
+                if file.name().ends_with(bin_name) {
+                    let mut out = File::create(&new_bin_path)?;
+                    std::io::copy(&mut file, &mut out)?;
+                    break;
+                }
+            }
+        } else {
+            let tar_gz = File::open(&archive_path)?;
+            let tar = flate2::read::GzDecoder::new(tar_gz);
+            let mut archive = tar::Archive::new(tar);
+            for entry in archive.entries()? {
+                let mut entry = entry?;
+                if entry.path()?.file_name().is_some_and(|n| n == bin_name) {
+                    entry.unpack(&new_bin_path)?;
+                    break;
+                }
+            }
+        }
+
+        // Replace the current executable
+        let current_exe = std::env::current_exe()?;
+        #[cfg(windows)]
+        {
+            // Windows locks running executables. Rename it, then copy the new one.
+            let old_exe = current_exe.with_extension("exe.old");
+            let _ = fs::rename(&current_exe, &old_exe);
+            fs::copy(&new_bin_path, &current_exe)?;
+        }
+        #[cfg(not(windows))]
+        {
+            fs::copy(&new_bin_path, &current_exe)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+
+                fs::set_permissions(&current_exe, fs::Permissions::from_mode(0o755))?;
+            }
+        }
+
+        logging::info("update: binary replaced successfully");
+        Ok(())
+    }
+
+    /// Removes the govmr binary and optionally purges the ~/.govmr directory.
+    ///
+    /// # Errors
+    /// Returns [`GovmError`] if the home directory cannot be found or any
+    /// file-removal step fails.
+    pub fn uninstall(&self, purge: bool) -> Result<(), GovmError> {
+        if purge {
+            let home = dirs::home_dir().ok_or(GovmError::HomeNotFound)?;
+            let base_dir = home.join(".govmr");
+            if base_dir.exists() {
+                fs::remove_dir_all(&base_dir)?;
+                logging::info("uninstall: purged ~/.govmr");
+            }
+        }
+
+        let exe = std::env::current_exe()?;
+        #[cfg(windows)]
+        {
+            let old_exe = exe.with_extension("exe.old");
+            let _ = fs::rename(&exe, &old_exe);
+            logging::info("uninstall: renamed executable to .old (Windows limitation)");
+        }
+        #[cfg(not(windows))]
+        {
+            fs::remove_file(&exe)?;
+            logging::info("uninstall: removed executable");
+        }
+        Ok(())
     }
 }
