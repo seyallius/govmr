@@ -24,6 +24,12 @@ use std::{
     time::Duration,
 };
 
+// ---------------------------------- Types, Variables & Constants ------------------------------ //
+
+/// Prevents a console window from appearing.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// Primary orchestrator managing installed toolchains, downloads, and version switching.
@@ -255,7 +261,6 @@ impl GoManager {
                 "$p=[Environment]::GetEnvironmentVariable('PATH','User');\
                  if($p -notlike \"*{shim}*\"){{[Environment]::SetEnvironmentVariable('PATH',\"$p;{shim}\",'User')}}",
             );
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000; // Prevents a console window from appearing
             let status = process::Command::new("powershell")
                 .args([
                     "-NoProfile",
@@ -446,18 +451,59 @@ impl GoManager {
 
     /// Removes the govmr binary and optionally purges the ~/.govmr directory.
     ///
-    /// Shell completion symlinks and canonical scripts are always removed
-    /// first, so no orphaned completion files survive regardless of the
-    /// user's purge preference.
+    /// The binary is removed FIRST. If this step fails, the function aborts
+    /// immediately without touching completions or `~/.govmr`, preventing a
+    /// half-uninstalled state where the binary remains but its support files are gone.
     ///
     /// # Errors
     /// Returns [`GovmError`] if the home directory cannot be found or any
     /// file-removal step fails.
     pub fn uninstall(&self, purge: bool) -> Result<(), GovmError> {
-        // Always clean up shell completions (symlinks + canonical scripts)
-        // before touching ~/.govmr, so orphaned links never survive.
+        let exe = std::env::current_exe()?;
+
+        // 1. Remove the binary FIRST.
+        #[cfg(windows)]
+        {
+            use std::{os::windows::process::CommandExt, process};
+
+            let exe_path = exe.to_string_lossy().to_string();
+            // Escape single quotes for PowerShell string literals
+            let escaped_path = exe_path.replace('\'', "''");
+
+            // Spawn a detached PowerShell process that waits for us to exit,
+            // then deletes the executable. This avoids the ".old" leftover file.
+            let script =
+                format!("Start-Sleep -Seconds 2; Remove-Item -Force -LiteralPath '{escaped_path}'");
+
+            match process::Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    &script,
+                ])
+                .creation_flags(CREATE_NO_WINDOW) // CREATE_NO_WINDOW: never flash a console
+                .spawn()
+            {
+                Ok(_) => logging::info("uninstall: scheduled background deletion of executable"),
+                Err(e) => logging::warn(&format!(
+                    "uninstall: failed to schedule background deletion: {e}. Please manually delete the executable."
+                )),
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            fs::remove_file(&exe)?;
+            logging::info("uninstall: removed executable");
+        }
+
+        // 2. Binary is gone (or scheduled to be). Now clean up completions.
         completions::remove_completions();
 
+        // 3. Finally, purge ~/.govmr if requested.
         if purge {
             let home = dirs::home_dir().ok_or(GovmError::HomeNotFound)?;
             let base_dir = home.join(".govmr");
@@ -465,21 +511,6 @@ impl GoManager {
                 fs::remove_dir_all(&base_dir)?;
                 logging::info("uninstall: purged ~/.govmr");
             }
-        }
-
-        let exe = std::env::current_exe()?;
-
-        #[cfg(windows)]
-        {
-            let old_exe = exe.with_extension("exe.old");
-            let _ = fs::rename(&exe, &old_exe);
-            logging::info("uninstall: renamed executable to .old (Windows limitation)");
-        }
-
-        #[cfg(not(windows))]
-        {
-            fs::remove_file(&exe)?;
-            logging::info("uninstall: removed executable");
         }
 
         Ok(())
