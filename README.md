@@ -101,6 +101,70 @@ the [GitHub Releases](https://github.com/seyallius/govmr/releases) page and extr
 
 ---
 
+## 🪄 Automatic Shell Completions
+
+**Zero configuration required.** On its very first run, `govmr` automatically generates and installs shell completion
+scripts for:
+
+- **Bash** (`~/.local/share/bash-completion/completions/govmr`)
+- **Zsh** (`~/.local/share/zsh/site-functions/_govmr`)
+- **Fish** (`~/.config/fish/completions/govmr.fish`)
+- **PowerShell** (`~/.config/powershell/govmr.ps1` on Unix, `~/Documents/PowerShell/govmr.ps1` on Windows)
+
+### ✨ How It Works
+
+1. **First run** → `govmr` detects your active shell via `$SHELL`
+2. **Generates** → Writes the completion script to `~/.govmr/completions/`
+3. **Symlinks** → Creates a symlink to your shell's standard discovery directory
+4. **Updates intelligently** → Content-aware staleness detection rewrites the script only when the CLI changes (new
+   commands, flags, themes)
+
+### 🧠 Smart Features
+
+- **Content-aware regeneration**: Not just timestamp-based — compares the _actual script content_ byte-for-byte. Add a
+  new subcommand? The script gets updated automatically.
+- **Single source of truth**: All completion scripts live in `~/.govmr/completions/` as canonical files, with symlinks
+  pointing to shell discovery directories. No scattered files across your system.
+- **Clean uninstall**: Running `govmr uninstall` removes **every** completion symlink and `~/.govmr/completions/` — no
+  orphaned files left behind.
+
+### 🔄 Reloading Completions
+
+After `govmr` updates its completion script (e.g., after a self-update or adding new commands), **open a new terminal
+window** or source the script manually:
+
+```bash
+# Bash
+source ~/.local/share/bash-completion/completions/govmr
+
+# Zsh
+source ~/.local/share/zsh/site-functions/_govmr
+
+# Fish
+source ~/.config/fish/completions/govmr.fish
+
+# PowerShell
+. $HOME/Documents/PowerShell/govmr.ps1  # Windows
+. ~/.config/powershell/govmr.ps1        # Unix
+```
+
+> 💡 **Tip**: Opening a new terminal tab/window is usually the easiest way to reload completions — your shell
+> automatically scans its discovery directories on startup.
+
+### 🧪 Test It!
+
+```bash
+# Command completions
+govmr <TAB><TAB>
+# → install  use  delete  list  theme  update  uninstall  help
+
+# Argument completions (themes)
+govmr theme <TAB><TAB>
+# → gocyan  newisland  cursordark  midnight  tokyonight  mocha  ...
+```
+
+---
+
 ## PATH Setup
 
 `govmr` uses a centralized shim directory (`~/.govmr/shim`). Add this directory to your `$PATH` once to allow shims
@@ -249,10 +313,10 @@ govmr use 1.22.4
 govmr use 1.22
 ```
 
-*Notes:*
+_Notes:_
 
-* If the requested version is not installed locally, `govmr` prints an actionable error asking to install it first.
-* Re-pointing happens instantly via file shims; existing terminals execute the updated binary without restarting.
+- If the requested version is not installed locally, `govmr` prints an actionable error asking to install it first.
+- Re-pointing happens instantly via file shims; existing terminals execute the updated binary without restarting.
 
 ---
 
@@ -274,10 +338,10 @@ Removes an installed Go toolchain from `~/.govmr/versions`.
 govmr delete 1.21.5
 ```
 
-*Notes:*
+_Notes:_
 
-* The CLI deletes immediately without a prompt. Use the TUI (`d` key) if you prefer interactive confirmation.
-* **Safety check**: You cannot delete the currently active toolchain. Run `govmr use <OTHER_VERSION>` first.
+- The CLI deletes immediately without a prompt. Use the TUI (`d` key) if you prefer interactive confirmation.
+- **Safety check**: You cannot delete the currently active toolchain. Run `govmr use <OTHER_VERSION>` first.
 
 ---
 
@@ -322,7 +386,7 @@ govmr uninstall --purge
 [Terminal Invocation] ───────> [ go / gofmt ]
                                      │
                  ┌───────────────────┴───────────────────┐
-                 ▼                                       ▼ 
+                 ▼                                      ▼
        (Unix: POSIX wrapper)                     (Windows: go.bat)
        #!/usr/bin/env bash                       @echo off
        exec "/path/to/active/go" "$@"            "%USERPROFILE%\.govmr\versions\...\go.exe" %*
@@ -332,9 +396,8 @@ govmr uninstall --purge
 2. **Shim Multiplexing**: Rather than modifying shell variables like `GOROOT` or prepending different binary paths on
    every switch, `govmr` maintains standard shims (`go`, `gofmt`) inside `~/.govmr/shim/`.
 
-* On **Linux and macOS**, shims are minimal shell wrappers delegating standard inputs and exit codes.
-* On **Windows**, shims are generated as `go.bat` and `gofmt.bat` files forwarding `%*` arguments to the target
-  binary.
+- On **Linux and macOS**, shims are minimal shell wrappers delegating standard inputs and exit codes.
+- On **Windows**, shims are generated as `go.bat` and `gofmt.bat` files forwarding `%*` arguments to the target binary.
 
 3. **Download Cleanup**: Partial downloads are kept in `~/.govmr/downloads/` and verified with magic-byte sniffing.
    Failed or canceled transfers clean up temporary files automatically to prevent disk bloat.
