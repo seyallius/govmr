@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0](https://github.com/seyallius/govmr/compare/v1.0.0...v1.1.0) - 2026-09-08
+
+### Added
+
+- *(completions/stale)* add staleness detection and symlink consolidation
+- *(completions/detect)* detect active shell and generate only for that shell
+- *(completions/generate)* auto-generate shell compl on first run
+
+### Fixed
+
+- *(uninstall)* improve reliability with self-deleting binary
+
+### Other
+
+- *(readme)* add automatic shell completions section
+- *(infra)* add git graph pretty command
+- *(cli)* use clap's ValueEnum derive for theme parsing
+
 ## [1.0.0](https://github.com/seyallius/govmr/compare/v0.4.0...v1.0.0) - 2026-09-06
 
 ### Added
