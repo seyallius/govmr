@@ -7,6 +7,7 @@ pub use archive::check_archive_magic;
 pub use install::InstallProgress;
 
 use crate::{
+    completions,
     config::Config,
     errors::GovmError,
     logging,
@@ -445,10 +446,18 @@ impl GoManager {
 
     /// Removes the govmr binary and optionally purges the ~/.govmr directory.
     ///
+    /// Shell completion symlinks and canonical scripts are always removed
+    /// first, so no orphaned completion files survive regardless of the
+    /// user's purge preference.
+    ///
     /// # Errors
     /// Returns [`GovmError`] if the home directory cannot be found or any
     /// file-removal step fails.
     pub fn uninstall(&self, purge: bool) -> Result<(), GovmError> {
+        // Always clean up shell completions (symlinks + canonical scripts)
+        // before touching ~/.govmr, so orphaned links never survive.
+        completions::remove_completions();
+
         if purge {
             let home = dirs::home_dir().ok_or(GovmError::HomeNotFound)?;
             let base_dir = home.join(".govmr");
@@ -459,17 +468,20 @@ impl GoManager {
         }
 
         let exe = std::env::current_exe()?;
+
         #[cfg(windows)]
         {
             let old_exe = exe.with_extension("exe.old");
             let _ = fs::rename(&exe, &old_exe);
             logging::info("uninstall: renamed executable to .old (Windows limitation)");
         }
+
         #[cfg(not(windows))]
         {
             fs::remove_file(&exe)?;
             logging::info("uninstall: removed executable");
         }
+
         Ok(())
     }
 }

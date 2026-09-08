@@ -29,6 +29,8 @@ async fn main() -> anyhow::Result<()> {
     let manager = Arc::new(GoManager::new()?);
     logging::init();
 
+    // Content-aware completion generation: rewrites scripts only when the
+    // CLI definition actually changed, and ensures symlinks are intact.
     completions::ensure_completions();
 
     if cli_args.command.is_some() {
@@ -42,6 +44,7 @@ async fn main() -> anyhow::Result<()> {
         }
         return result;
     }
+
     logging::info(&format!(
         "govmr {} started (tui mode)",
         env!("CARGO_PKG_VERSION")
