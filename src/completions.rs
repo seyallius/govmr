@@ -89,7 +89,7 @@ pub fn ensure_completions() {
                 continue;
             }
             logging::info(&format!(
-                "completions: updated {} script at {}",
+                "completions: updated {} script at {} (restart your shell or source it to reload)",
                 target.shell,
                 canonical.display()
             ));

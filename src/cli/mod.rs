@@ -49,7 +49,7 @@ pub enum Commands {
     /// View or change the TUI color theme.
     Theme {
         /// Apply a theme by name (e.g. `midnight`); omit to list themes.
-        #[arg(value_parser = parse_theme)]
+        #[arg(value_enum)]
         name: Option<ThemeName>,
     },
     /// Update govmr to the latest version.
@@ -63,21 +63,6 @@ pub enum Commands {
 }
 
 // ----------------------------------------- Public API ----------------------------------------- //
-
-/// Clap value parser mapping a theme key/title to a [`ThemeName`].
-fn parse_theme(raw: &str) -> Result<ThemeName, String> {
-    ThemeName::from_key(raw).ok_or_else(|| {
-        format!(
-            "unknown theme '{}'. Available: {}",
-            raw,
-            ThemeName::ALL
-                .iter()
-                .map(|t| t.key())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    })
-}
 
 /// Dispatches execution based on the parsed CLI subcommand.
 ///

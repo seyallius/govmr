@@ -200,6 +200,19 @@ impl fmt::Display for ThemeName {
         f.write_str(self.title())
     }
 }
+impl clap::ValueEnum for ThemeName {
+    /// Returns the slice of all available themes for clap to iterate over.
+    fn value_variants<'a>() -> &'a [Self] {
+        &Self::ALL
+    }
+
+    /// Maps each theme to its CLI string key (e.g. "midnight") and help text.
+    fn to_possible_value<'a>(&self) -> Option<clap::builder::PossibleValue> {
+        let possible_value = clap::builder::PossibleValue::new(self.key());
+        let possible_value = possible_value.help(self.title());
+        Some(possible_value)
+    }
+}
 
 /// Coarse brightness family a theme belongs to, used to group the picker.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
