@@ -17,6 +17,7 @@
 
 pub mod app;
 pub mod cli;
+pub mod completions;
 pub mod config;
 pub mod errors;
 pub mod logging;

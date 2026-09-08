@@ -12,7 +12,7 @@ use crossterm::{
 use govmr::{
     app::{self, Action, App},
     cli::{self, Cli},
-    logging,
+    completions, logging,
     manager::GoManager,
     tui,
 };
@@ -28,6 +28,8 @@ async fn main() -> anyhow::Result<()> {
     let cli_args = Cli::parse();
     let manager = Arc::new(GoManager::new()?);
     logging::init();
+
+    completions::ensure_completions();
 
     if cli_args.command.is_some() {
         logging::info(&format!(
@@ -92,14 +94,12 @@ async fn run_tui(
         &initial_theme,
         &manager,
     )?;
-
     if !should_continue {
         return Ok(());
     }
 
     let mut app = App::new(manager.clone(), shim_path.clone());
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
-
     let _ = action_tx.send(Action::Refresh);
 
     loop {
@@ -107,6 +107,7 @@ async fn run_tui(
             tui::render(f, &mut app.state);
             tui::render_overlays(f, &app.state);
         })?;
+
         app::handle_actions(&mut action_rx, &mut app, &manager, &action_tx).await?;
 
         // Keep the log viewer's contents fresh while it is open (throttled).
