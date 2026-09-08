@@ -72,3 +72,7 @@ diff-cp:
 [group('Git')]
 today:
     git log --since="today 00:00:00" --until="today 23:59:59" --oneline
+
+[group('Git')]
+grf:
+    git log --graph --pretty=format:'%C(auto)%h%Creset %C(cyan)%>(12,trunc)%an%Creset %Cgreen%>(12,trunc)%cr%Creset %C(auto)%d%Creset %s' --abbrev-commit --all --date=relative
