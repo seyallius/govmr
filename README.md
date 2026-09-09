@@ -21,10 +21,10 @@
 ## Demo
 
 <div align="center">
-  <img src="https://github.com/seyallius/govmr/tree/main/docs/assets/demo_c.gif" alt="govmr interactive TUI demo" width="850px" />
+  <img src="https://github.com/seyallius/govmr/blob/main/docs/assets/demo_c.gif" alt="govmr interactive TUI demo" width="850px" />
   <p><em>Interactive dashboard powered by Ratatui & Tokio async runtime</em></p>
 
-  <img src="https://github.com/seyallius/govmr/tree/main/docs/assets/themes_c.gif" alt="govmr TUI themes" width="850px" />
+  <img src="https://github.com/seyallius/govmr/blob/main/docs/assets/themes_c.gif" alt="govmr TUI themes" width="850px" />
   <p><em>`govmr` TUI's persistent themes</em></p>
 </div>
 
