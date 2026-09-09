@@ -121,6 +121,18 @@ pub enum SystemPrompt {
     UninstallPurge,
 }
 
+/// A visual addition (separator, blank line) inserted into the log display.
+///
+/// Anchored to the physical file line count at the time it was created, so
+/// new log entries tail in *below* the separator rather than pushing it down.
+#[derive(Clone)]
+pub struct VisualAddition {
+    /// The text to render (e.g. a line of hyphens, or an empty string).
+    pub text: String,
+    /// The physical file line count when this addition was created.
+    pub anchor: usize,
+}
+
 /// Holds all state variables required for rendering and interacting with the TUI.
 /// A flat bag of independent UI toggles: they combine freely, so neither a
 /// state machine nor grouped bool enums would model them more accurately.
@@ -177,6 +189,18 @@ pub struct AppState {
     pub log_focus: bool,
     /// Whether long log lines wrap instead of clipping at the panel edge.
     pub log_wrap: bool,
+    /// How many leading *physical* log lines a visual clear (`Ctrl+l`) hides.
+    ///
+    /// Behaves like clearing a terminal: lines written *after* the clear still
+    /// tail into the panel, and closing/reopening resets the watermark so the
+    /// full file is visible again. Replaces the boolean flag that hid the
+    /// entire file until the panel was reopened.
+    pub log_visual_skip: usize,
+    /// Visual additions (separators, blank lines) inserted into the log display.
+    /// Each addition is anchored to the physical file line count at the time it
+    /// was created, so new log entries tail in *below* the separator rather than
+    /// pushing it down.
+    pub log_visual_additions: Vec<VisualAddition>,
     /// Sender used to signal cancellation of an ongoing installation.
     pub cancel_install: Option<tokio::sync::watch::Sender<bool>>,
     /// Tracks which system-level confirmation modal (Update/Uninstall) is currently active.
@@ -219,6 +243,8 @@ impl AppState {
             log_wrap: false,
             cancel_install: None,
             system_prompt: None,
+            log_visual_skip: 0,
+            log_visual_additions: Vec::new(),
         }
     }
 

@@ -131,25 +131,45 @@ fn render_log_statusline(frame: &mut Frame, area: Rect, state: &AppState, theme:
         || "~/.govmr/govmr.log".to_string(),
         |p| tilde_path(&p.to_string_lossy()),
     );
-    let hints = if state.log_focus {
-        " ↑↓ scroll · pgup/dn · g/G ends · f follow · w wrap · ` dashboard · L close"
-    } else {
-        " ` focus · L close"
-    };
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(" ", theme.muted()),
-            follow,
-            Span::styled("  ", theme.muted()),
-            wrap,
-            Span::styled("  ", theme.muted()),
-            scrolled,
-            Span::styled("  ·  ", theme.muted()),
-            Span::styled(path, theme.brand_bold()),
-            Span::styled(hints, theme.muted()),
-        ])),
-        area,
-    );
+
+    let mut spans = vec![
+        Span::styled(" ", theme.muted()),
+        follow,
+        Span::styled("  ", theme.muted()),
+        wrap,
+        Span::styled("  ", theme.muted()),
+        scrolled,
+        Span::styled("  ·  ", theme.muted()),
+        Span::styled(path, theme.brand_bold()),
+    ];
+    let used: usize = spans.iter().map(Span::width).sum();
+    let budget = (area.width as usize).saturating_sub(used);
+
+    let hints = pick_hints(budget);
+    if !hints.is_empty() {
+        spans.push(Span::styled(hints, theme.muted()));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+
+    // let hints = if state.log_focus {
+    //     " ↑↓ scroll · f follow · w wrap · Ctrl+l clear · - separator · ↵ blank line · ` dashboard · L close"
+    // } else {
+    //     " ` focus · L close"
+    // };
+    // frame.render_widget(
+    //     Paragraph::new(Line::from(vec![
+    //         Span::styled(" ", theme.muted()),
+    //         follow,
+    //         Span::styled("  ", theme.muted()),
+    //         wrap,
+    //         Span::styled("  ", theme.muted()),
+    //         scrolled,
+    //         Span::styled("  ·  ", theme.muted()),
+    //         Span::styled(path, theme.brand_bold()),
+    //         Span::styled(hints, theme.muted()),
+    //     ])),
+    //     area,
+    // );
 }
 
 /// Estimates how many terminal rows a styled log line will occupy.
@@ -183,4 +203,23 @@ fn colorize_log_line(line: &str, theme: &Theme) -> Line<'static> {
         Span::styled(ts.to_string(), theme.muted()),
         Span::styled(rest.to_string(), body_style),
     ])
+}
+
+/// Returns the richest hint string that fits in `budget` display cells.
+///
+/// Tiers drop detail gradually (labels first, then groupings) so the strip
+/// degrades gracefully instead of vanishing or overflowing.
+fn pick_hints(budget: usize) -> &'static str {
+    const FULL: &str = " ↑↓ scroll · f follow · w wrap · Ctrl+l clear · - separator · ↵ blank line · ` dashboard · L close";
+    const COMPACT: &str = " ↑↓ · f · w · ^l clear · - sep · ↵ blank · ` · L";
+    const MINIMAL: &str = " ^l · - · ↵ · L";
+    if budget >= FULL.chars().count() {
+        FULL
+    } else if budget >= COMPACT.chars().count() {
+        COMPACT
+    } else if budget >= MINIMAL.chars().count() {
+        MINIMAL
+    } else {
+        ""
+    }
 }

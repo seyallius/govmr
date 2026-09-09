@@ -450,6 +450,9 @@ impl GoManager {
         if !tag.is_empty() && tag != current {
             Ok(Some(tag.to_string()))
         } else {
+            logging::debug(&format!(
+                "update check: complete status=latest current={current}"
+            ));
             Ok(None)
         }
     }

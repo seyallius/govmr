@@ -10,7 +10,7 @@ pub use actions::handle_actions;
 pub use keys::{KeyOutcome, handle_key};
 pub use state::{
     ActiveTab, AppState, BusyState, MsgKind, Phase, StatusMessage, SystemPrompt, ThemePickerState,
-    visible_indices,
+    VisualAddition, visible_indices,
 };
 
 use crate::{
@@ -132,6 +132,18 @@ pub(crate) const COMMAND_REFERENCE: &[HelpEntry] = &[
         keys: "w",
         action: "Toggle word wrap",
     },
+    HelpEntry::Binding {
+        keys: "Ctrl+l",
+        action: "Clear display (visual only)",
+    },
+    HelpEntry::Binding {
+        keys: "-",
+        action: "Insert separator line",
+    },
+    HelpEntry::Binding {
+        keys: "Enter",
+        action: "Insert blank line",
+    },
     HelpEntry::Section("Maintenance"),
     HelpEntry::Binding {
         keys: "U",
@@ -198,6 +210,8 @@ impl App {
                 log_refreshed: None,
                 log_focus: false,
                 log_wrap: false,
+                log_visual_skip: 0,
+                log_visual_additions: Vec::new(),
                 cancel_install: None,
                 system_prompt: None,
             },
@@ -266,6 +280,9 @@ impl App {
         self.state.log_focus = false;
         self.state.log_follow = true;
         self.state.log_scroll = 0;
+        // Reopening restores the pristine file view: drop watermark + additions.
+        self.state.log_visual_skip = 0;
+        self.state.log_visual_additions.clear();
         self.refresh_logs();
     }
 
@@ -273,6 +290,19 @@ impl App {
     pub fn close_logs(&mut self) {
         self.state.show_logs = false;
         self.state.log_focus = false;
+        self.state.log_visual_skip = 0;
+        self.state.log_visual_additions.clear();
+    }
+
+    /// Clears the visible log display without touching the file on disk.
+    ///
+    /// Terminal semantics: everything currently on screen disappears, but lines
+    /// written *afterwards* still tail in. The watermark is the physical line
+    /// count at clear time, so "new" is defined by the file, not by the UI.
+    pub fn clear_log_display(&mut self) {
+        self.state.log_visual_skip = logging::read_lines().len();
+        self.state.log_visual_additions.clear();
+        self.refresh_logs();
     }
 
     /// Opens the right-docked keyboard help panel, resetting its scroll to the top.
@@ -320,8 +350,45 @@ impl App {
 
     /// Re-reads the log file into the viewer cache. When following, stays
     /// pinned to the newest entry; otherwise preserves the scroll position.
+    ///
+    /// Blends the physical file (minus any cleared-away prefix) with transient
+    /// visual additions (separators, blank lines), inserting each addition exactly
+    /// at the file-line anchor it was created at.
     pub fn refresh_logs(&mut self) {
-        self.state.log_lines = logging::read_lines();
+        let file_lines = logging::read_lines();
+
+        // Log rotation replaces the file with a much shorter one; a stale
+        // watermark would then hide *everything*, so drop it defensively.
+        if self.state.log_visual_skip > file_lines.len() {
+            self.state.log_visual_skip = 0;
+            self.state.log_visual_additions.clear();
+        }
+
+        let mut lines: Vec<String> = Vec::new();
+        let mut additions_iter = self.state.log_visual_additions.iter().peekable();
+
+        for (i, line) in file_lines.into_iter().enumerate() {
+            if i >= self.state.log_visual_skip {
+                // Insert any visual additions anchored at or before this file line
+                while let Some(addition) = additions_iter.peek() {
+                    if addition.anchor <= i {
+                        lines.push(addition.text.clone());
+                        additions_iter.next();
+                    } else {
+                        break;
+                    }
+                }
+                lines.push(line);
+            }
+        }
+
+        // Append any remaining additions anchored at or after the end of the file
+        for addition in additions_iter {
+            lines.push(addition.text.clone());
+        }
+
+        self.state.log_lines = lines;
+
         self.state.log_refreshed = Some(Instant::now());
         let max = self.state.log_lines.len().saturating_sub(1);
         if self.state.log_follow {

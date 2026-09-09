@@ -5,14 +5,14 @@
 //! capture (help, theme picker, delete confirmation, filter mode), then the
 //! main shortcut set.
 
-use crate::app::state::SystemPrompt;
 use crate::{
-    app::{Action, App, BusyState, MsgKind},
+    app::{Action, App, BusyState, MsgKind, VisualAddition, state::SystemPrompt},
     logging,
     theme::{Theme, ThemeName, ThemePickerView},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use tokio::sync::mpsc::UnboundedSender;
+
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// How the event loop should proceed after a key has been handled.
@@ -328,6 +328,28 @@ fn handle_log_panel_key(key: KeyEvent, app: &mut App) -> Option<KeyOutcome> {
         }
         KeyCode::Char('w') => {
             app.toggle_log_wrap();
+            KeyOutcome::Continue
+        }
+        KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.clear_log_display();
+            KeyOutcome::Continue
+        }
+        KeyCode::Char('-') => {
+            let anchor = logging::read_lines().len();
+            app.state.log_visual_additions.push(VisualAddition {
+                text: "-".repeat(50),
+                anchor,
+            });
+            app.refresh_logs();
+            KeyOutcome::Continue
+        }
+        KeyCode::Enter => {
+            let anchor = logging::read_lines().len();
+            app.state.log_visual_additions.push(VisualAddition {
+                text: String::new(),
+                anchor,
+            });
+            app.refresh_logs();
             KeyOutcome::Continue
         }
         KeyCode::Char('q') => KeyOutcome::Quit,
