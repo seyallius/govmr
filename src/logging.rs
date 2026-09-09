@@ -1,6 +1,37 @@
 //! Module logging. Dependency-free operation logger that appends timestamped
 //! entries to ~/.govmr/govmr.log (single-generation rotation), giving the TUI and CLI a
 //! silent, post-mortem-friendly audit trail.
+//!
+//! # What a log line is for
+//!
+//! The bar is a *post-mortem*: given only `govmr.log`, a maintainer must be able
+//! to answer (1) which govmr/OS/arch ran, (2) which operations were attempted
+//! and in what order, (3) which succeeded or failed *and why*, and (4) what was
+//! installed/active when the session ended. Every line exists to serve one of
+//! those four questions.
+//!
+//! # Line format
+//!
+//! Each entry is rendered as `YYYY-MM-DD HH:MM:SSZ <LEVEL> <message>`, where the
+//! message follows one convention so the file stays both human-readable and
+//! machine-greppable:
+//!
+//! ```text
+//! <area> <verb>: key=value key=value …
+//! ```
+//!
+//! * `<area>` is the subsystem (`install`, `extract`, `shim`, `config`, `use`,
+//!   `session`, …) and `<verb>` the lifecycle step (`started`, `complete`,
+//!   `failed`, `rejected`, …). Grep the area to get one operation's story.
+//! * Values are `key=value` pairs. Quote a value in double quotes whenever it
+//!   can contain a space (paths, hex dumps, human sizes); never quote tokens
+//!   that cannot (`version=`, `count=`, `ok=`).
+//! * Plain ASCII only — no emoji. CLI stdout may use emoji; the log must not,
+//!   so `grep`/`awk` pipelines keep working.
+//! * An error is logged **once**, by the layer that *handles* it (the layer that
+//!   shows it to the user). Code that merely returns an error stays silent, so
+//!   a single failure never produces two lines. The exception is a line that
+//!   carries context no other layer can see (e.g. the archive magic bytes).
 
 use std::{
     fs::{self, File, OpenOptions},
@@ -110,6 +141,31 @@ pub fn log(level: Level, message: &str) {
     let _ = file.write_all(line.as_bytes());
     let _ = file.flush();
 }
+
+/// Returns the message part of a rendered line, i.e. drops the
+/// `YYYY-MM-DD HH:MM:SSZ <LEVEL> ` prefix.
+///
+/// Public because anything that reasons *about* the trail — the TUI log panel's
+/// highlighting, the tests, a future `govmr logs --grep` — needs the message
+/// without re-parsing the framing.
+#[must_use]
+pub fn message_of(line: &str) -> &str {
+    let rest = line.get(TIMESTAMP_LEN..).unwrap_or(line);
+    for tag in [
+        Level::Info.tag(),
+        Level::Warn.tag(),
+        Level::Error.tag(),
+        Level::Debug.tag(),
+    ] {
+        if let Some(msg) = rest.strip_prefix(tag) {
+            return msg.trim_start();
+        }
+    }
+    rest
+}
+
+/// Length of the `YYYY-MM-DD HH:MM:SSZ ` prefix that opens every line.
+const TIMESTAMP_LEN: usize = 21;
 
 /// Logs a routine operational event.
 pub fn info(message: &str) {

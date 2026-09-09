@@ -1,6 +1,10 @@
 //! Module config - Persisted user preferences stored as TOML under `~/.govmr`.
+//!
+//! Loading and saving are both logged: "my theme won't save" is otherwise
+//! indistinguishable from "the theme was saved and something else reset it",
+//! so the file path, the resolved value, and where it came from all go to the log.
 
-use crate::theme::ThemeName;
+use crate::{logging, theme::ThemeName};
 use serde::{Deserialize, Serialize};
 
 /// On-disk layout of `~/.govmr/config.toml`.
@@ -33,24 +37,77 @@ pub struct Config {
 impl Config {
     /// Loads configuration from `<base_dir>/config.toml`, falling back to (and
     /// migrating) the legacy `<base_dir>/config` key/value file if present.
+    ///
+    /// Which of the three sources answered (`config.toml`, the legacy file, or
+    /// built-in defaults) is recorded, since "no config file" and "unparseable
+    /// config file" look identical to the user but need different fixes.
     #[must_use]
     pub fn load(base_dir: &std::path::Path) -> Self {
         let path = base_dir.join("config.toml");
         let legacy = base_dir.join("config");
+        let mut source = "defaults";
 
-        let cfg = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|raw| toml::from_str::<ConfigFile>(&raw).ok())
-            .or_else(|| {
-                // One-time migration from the old plain-text `theme = x` file.
-                std::fs::read_to_string(&legacy)
-                    .ok()
-                    .and_then(|raw| parse_legacy_theme(&raw))
-                    .map(|theme| ConfigFile { theme })
-            })
-            .unwrap_or_default();
+        // 1) The file we write ourselves.
+        let mut cfg = match std::fs::read_to_string(&path) {
+            Ok(raw) => match toml::from_str::<ConfigFile>(&raw) {
+                Ok(cfg) => {
+                    source = "config.toml";
+                    Some(cfg)
+                }
+                Err(e) => {
+                    logging::warn(&format!(
+                        "config: parse failed path=\"{}\" error={e} action=try_legacy",
+                        path.display()
+                    ));
+                    None
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => {
+                logging::warn(&format!(
+                    "config: unreadable path=\"{}\" error={e} action=try_legacy",
+                    path.display()
+                ));
+                None
+            }
+        };
 
-        let theme = ThemeName::from_key(&cfg.theme).unwrap_or_default();
+        // 2) One-time migration from the old plain-text `theme = x` file.
+        if cfg.is_none() {
+            let migrated = std::fs::read_to_string(&legacy)
+                .ok()
+                .and_then(|raw| parse_legacy_theme(&raw));
+            if let Some(theme) = migrated {
+                // The legacy file is only *read*; config.toml appears on the
+                // next save, which the log states so the gap is not mistaken
+                // for a failed write.
+                logging::info(&format!(
+                    "config: migrated legacy=\"{}\" to=\"{}\" theme={theme} note=pending_first_save",
+                    legacy.display(),
+                    path.display()
+                ));
+                cfg = Some(ConfigFile { theme });
+                source = "legacy config";
+            }
+        }
+
+        // 3) Defaults.
+        let cfg = cfg.unwrap_or_default();
+        let theme = ThemeName::from_key(&cfg.theme).unwrap_or_else(|| {
+            logging::warn(&format!(
+                "config: unknown theme value=\"{}\" path=\"{}\" fallback={}",
+                cfg.theme,
+                path.display(),
+                ThemeName::default().key()
+            ));
+            ThemeName::default()
+        });
+
+        logging::info(&format!(
+            "config: loaded path=\"{}\" theme={} source={source}",
+            path.display(),
+            theme.key()
+        ));
         Self { theme, path }
     }
 
@@ -70,7 +127,20 @@ impl Config {
             "# GoVMR user preferences\n# Re-generate with `govmr theme <name>` or press T in the TUI.\n\n{}\n",
             toml::to_string(&cfg).map_err(std::io::Error::other)?
         );
-        std::fs::write(&self.path, body)
+        std::fs::write(&self.path, &body).map_err(|e| {
+            logging::error(&format!(
+                "config: write failed path=\"{}\" theme={} error={e}",
+                self.path.display(),
+                theme.key()
+            ));
+            e
+        })?;
+        logging::debug(&format!(
+            "config: written path=\"{}\" theme={}",
+            self.path.display(),
+            theme.key()
+        ));
+        Ok(())
     }
 }
 

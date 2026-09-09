@@ -7,12 +7,11 @@
 
 use crate::app::state::SystemPrompt;
 use crate::{
-    app::{Action, App, MsgKind},
+    app::{Action, App, BusyState, MsgKind},
     logging,
     theme::{Theme, ThemeName, ThemePickerView},
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use ratatui::text::{Line, Span};
 use tokio::sync::mpsc::UnboundedSender;
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
@@ -45,7 +44,7 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
 
     // Each modal that captures keys handles its own key presses in turn.
     if app.state.show_help {
-        return handle_help_overlay_key(key, app);
+        return handle_help_overlay_key(key, app, action_tx);
     }
     if app.state.show_theme_picker {
         return handle_theme_picker_key(key, app);
@@ -79,41 +78,19 @@ pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Acti
 /// The overlay captures every OTHER key until dismissed, EXCEPT 'q' which
 /// quits the app and 'f' which applies the permanent PATH fix. The overlay
 /// stays open on 'f' so the result notice is shown inside it.
-fn handle_help_overlay_key(key: KeyEvent, app: &mut App) -> KeyOutcome {
+///
+/// 'f' is dispatched as [`Action::FixPath`] rather than calling the manager
+/// directly, so both fix-path entry points share one handler — and therefore one
+/// log line, one notice, and one `is_shim_in_path` refresh.
+fn handle_help_overlay_key(
+    key: KeyEvent,
+    app: &mut App,
+    action_tx: &UnboundedSender<Action>,
+) -> KeyOutcome {
     match key.code {
         KeyCode::Char('q') => KeyOutcome::Quit,
         KeyCode::Char('f') => {
-            match app.manager.fix_path_permanently() {
-                Ok(lines) => {
-                    // lines is Vec<String> - we need to iterate over it
-                    let styled_lines: Vec<Line<'static>> = lines
-                        .iter() // Use iter() instead of into_iter()
-                        .enumerate()
-                        .map(|(i, line)| {
-                            if i == 0 {
-                                // First line: success message
-                                Line::from(Span::styled(line.clone(), app.state.theme.success()))
-                            } else if i == 1 && line.starts_with("    ") {
-                                // Command line: indent preserved, brand bold
-                                Line::from(Span::styled(line.clone(), app.state.theme.brand_bold()))
-                            } else {
-                                // Other lines: muted but visible
-                                Line::from(Span::styled(line.clone(), app.state.theme.muted()))
-                            }
-                        })
-                        .collect();
-                    app.state.path_fix_notice = Some(styled_lines);
-                }
-                Err(e) => {
-                    app.state.path_fix_notice = Some(vec![
-                        Line::from(Span::styled(
-                            "Failed to fix PATH:".to_string(),
-                            app.state.theme.error(),
-                        )),
-                        Line::from(Span::styled(format!("  {e}"), app.state.theme.muted())),
-                    ]);
-                }
-            }
+            let _ = action_tx.send(Action::FixPath);
             KeyOutcome::Continue
         }
         _ => {
@@ -268,21 +245,31 @@ fn handle_filter_key(key: KeyEvent, app: &mut App) -> KeyOutcome {
 
 /// Intercepts Esc/c to cancel an ongoing installation; other keys fall through
 /// to the rest of the dashboard.
+///
+/// Only the accepted cancel is logged. A DEBUG line per keypress during a
+/// multi-minute install drowned the audit trail in noise (one line for every
+/// stray keystroke) without ever saying anything the outcome didn't.
 fn handle_install_cancel_key(key: KeyEvent, app: &mut App) -> Option<KeyOutcome> {
-    if app.state.cancel_install.is_some() {
+    let cancel_pressed = key.code == KeyCode::Esc || key.code == KeyCode::Char('c');
+    if app.state.cancel_install.is_none() || !cancel_pressed {
+        return None;
+    }
+    let version = app
+        .state
+        .busy
+        .as_ref()
+        .and_then(BusyState::target)
+        .unwrap_or("unknown")
+        .to_string();
+    if let Some(tx) = app.state.cancel_install.take() {
+        let _ = tx.send(true);
+        app.set_status("Cancelling installation...", MsgKind::Info);
         logging::debug(&format!(
-            "Key pressed during install: {:?}, cancel_install is Some",
+            "install: cancel requested version={version} key={:?}",
             key.code
         ));
-        if key.code == KeyCode::Esc || key.code == KeyCode::Char('c') {
-            if let Some(tx) = app.state.cancel_install.take() {
-                let _ = tx.send(true);
-                app.set_status("Cancelling installation...", MsgKind::Info);
-            }
-            return Some(KeyOutcome::Continue);
-        }
     }
-    None
+    Some(KeyOutcome::Continue)
 }
 
 /// Handles keys for the docked log panel: `L` closes, `` ` `` toggles focus.

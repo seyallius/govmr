@@ -4,8 +4,7 @@ use super::{GoManager, archive};
 use crate::{errors::GovmError, logging, version::GoVersion};
 use futures_util::StreamExt;
 use std::{
-    fs::{self, File},
-    io::Read,
+    fs,
     path::{Path, PathBuf},
     time::Instant,
 };
@@ -48,12 +47,21 @@ impl GoManager {
     {
         let download_path = self.downloads_dir.join(&version.filename);
         let target_dir = self.versions_dir.join(format!("go{}", version.raw_version));
+        let expected_bytes = version.size;
+        // `size` is the manifest's own figure; when it is absent (0) say so
+        // rather than printing a misleading "0 B" as if it were measured.
+        let size_note = if expected_bytes > 0 {
+            format!(" size=\"{}\"", GoVersion::format_size(expected_bytes))
+        } else {
+            " size=unknown".to_string()
+        };
         logging::info(&format!(
-            "install started: go{} url={} dest={}",
+            "install: started version={} url={} dest=\"{}\" bytes={expected_bytes}{size_note}",
             version.raw_version,
             version.url,
             download_path.display()
         ));
+        let started_at = Instant::now();
 
         let is_tar = version.filename.ends_with(".tar.gz");
         self.download_archive(version, &download_path, is_tar, &progress)
@@ -67,6 +75,10 @@ impl GoManager {
         let dl_path_clone = download_path.clone();
         let target_dir_clone = target_dir.clone();
 
+        // Measured before extraction deletes the archive, so the log records how
+        // much was on disk even when unpacking then fails halfway through.
+        let archive_bytes = fs::metadata(&download_path).map_or(0, |meta| meta.len());
+
         // The archive is fully on disk, so the blocking extraction work moves
         // onto the blocking pool instead of stalling the async runtime.
         let extraction = tokio::task::spawn_blocking(move || {
@@ -75,15 +87,16 @@ impl GoManager {
         .await
         .map_err(|e| GovmError::Extraction(e.to_string()))?;
 
-        if let Err(e) = &extraction {
-            logging::error(&format!("install failed: go{}: {e}", version.raw_version));
-        }
+        // Deliberately not logged here: `handle_install_failed` owns the single
+        // `install: failed` line, and returning twice as loud is how one 404
+        // used to become two ERROR lines.
         extraction?;
 
         logging::info(&format!(
-            "install complete: go{} -> {}",
+            "install: complete version={} dest=\"{}\" archive_bytes={archive_bytes} elapsed_s={:.1}",
             version.raw_version,
-            target_dir.display()
+            target_dir.display(),
+            started_at.elapsed().as_secs_f64()
         ));
         Ok(target_dir)
     }
@@ -110,17 +123,19 @@ impl GoManager {
     where
         F: Fn(InstallProgress),
     {
+        // Local timer for the transfer only; the install-wide duration (which also
+        // covers extraction) is measured by the caller.
+        let transfer_started_at = Instant::now();
         let res = self.client.get(&version.url).send().await?;
         let status = res.status();
         let final_url = res.url().clone(); // where we *actually* ended up
         logging::debug(&format!(
-            "download response: HTTP {status} (final url: {final_url})"
+            "download: response status={status} url={final_url} requested={}",
+            version.url
         ));
+        // No log line for a bad status: the `download response` DEBUG line above
+        // already carries status + final URL, and the handler logs the failure.
         if !status.is_success() {
-            logging::error(&format!(
-                "install failed: go{}: HTTP {status} for {final_url}",
-                version.raw_version
-            ));
             return Err(GovmError::HttpStatus {
                 status: status.as_u16(),
                 url: final_url.to_string(),
@@ -184,27 +199,20 @@ impl GoManager {
         }
 
         file.flush().await?;
+        // Integer math keeps the figures exact and free of lossy float casts;
+        // `max(1)` guarantees the divide-by-zero case cannot happen.
+        let elapsed_ms = transfer_started_at.elapsed().as_millis().max(1);
+        let avg_bps = u64::try_from(u128::from(downloaded) * 1000 / elapsed_ms).unwrap_or(u64::MAX);
         logging::info(&format!(
-            "download complete: go{} {} bytes -> {}",
+            "download: complete version={} bytes={} dest=\"{}\" elapsed_ms={elapsed_ms} avg_bps={avg_bps}",
             version.raw_version,
             downloaded,
             download_path.display()
         ));
 
-        // Forensic breadcrumb: what did we ACTUALLY save? `1f 8b` = real gzip;
-        // `3c 68 74 6d` ("<htm") = HTML error page; plain tar bytes = something
-        // pre-decoded our stream.
-        if let Ok(mut probe) = File::open(download_path) {
-            let mut head = [0u8; 16];
-            if let Ok(n) = probe.read(&mut head) {
-                let hex: Vec<String> = head[..n].iter().map(|b| format!("{b:02x}")).collect();
-                logging::debug(&format!("archive head: {}", hex.join(" ")));
-            }
-        }
-
         if total_size > 0 && downloaded != total_size {
             logging::warn(&format!(
-                "size mismatch: expected {total_size} bytes, received {downloaded} ({final_url})"
+                "download: size mismatch expected_bytes={total_size} received_bytes={downloaded} url={final_url}"
             ));
         }
 
@@ -216,10 +224,19 @@ impl GoManager {
         });
         progress(InstallProgress::Extracting);
 
+        // Forensic breadcrumb: what did we ACTUALLY save? `1f 8b` = real gzip;
+        // `3c 68 74 6d` ("<htm") = HTML error page; plain tar bytes = something
+        // pre-decoded our stream. Read once and reuse the same head for the
+        // magic check — probing twice used to write the identical line twice.
         let head = archive::read_head(download_path, 16);
         if let Some(bytes) = &head {
             let hex: Vec<String> = bytes.iter().map(|b| format!("{b:02x}")).collect();
-            logging::debug(&format!("archive head: {}", hex.join(" ")));
+            logging::debug(&format!(
+                "archive: head path=\"{}\" bytes=\"{}\" expected=\"{}\"",
+                download_path.display(),
+                hex.join(" "),
+                if is_tar { "1f 8b" } else { "50 4b" }
+            ));
         }
         archive::check_archive_magic(
             head.as_deref().unwrap_or_default(),

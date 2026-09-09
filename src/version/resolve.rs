@@ -5,6 +5,7 @@
 //! (so `1.2` never matches `1.20`).
 
 use super::GoVersion;
+use crate::logging;
 
 // ----------------------------------------- Public API ----------------------------------------- //
 
@@ -74,6 +75,7 @@ pub fn resolve_version<'a>(query: &str, versions: &'a [GoVersion]) -> Option<&'a
         .iter()
         .find(|v| v.raw_version == clean || v.display_name == clean)
     {
+        log_resolution(clean, versions.len(), Some((found, "exact")));
         return Some(found);
     }
 
@@ -93,7 +95,25 @@ pub fn resolve_version<'a>(query: &str, versions: &'a [GoVersion]) -> Option<&'a
             }
         }
     }
+    log_resolution(clean, versions.len(), best.map(|v| (v, "prefix")));
     best
+}
+
+/// Records what the resolver was asked for and how it answered.
+///
+/// "Version not found" is far easier to debug when the log says which query was
+/// matched against how many candidates — a stale/short manifest and a typo look
+/// identical to the user. Kept at DEBUG because the caller owns the error line.
+fn log_resolution(query: &str, candidates: usize, matched: Option<(&GoVersion, &str)>) {
+    match matched {
+        Some((version, kind)) => logging::debug(&format!(
+            "resolve: matched query=\"{query}\" candidates={candidates} version={} kind={kind}",
+            version.raw_version
+        )),
+        None => logging::debug(&format!(
+            "resolve: no match query=\"{query}\" candidates={candidates} note=no_entry_matched_prefix",
+        )),
+    }
 }
 
 /// Numeric comparison of two version strings, used to sort versions newest-first.

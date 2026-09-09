@@ -36,7 +36,12 @@ pub async fn handle_actions(
             Action::Install(v) => start_install(app, manager, action_tx, v),
             Action::InstallProgress(p) => app.update_install_progress(p),
             Action::InstallDone(v) => handle_install_done(app, manager, action_tx, &v),
-            Action::InstallFailed(err) => handle_install_failed(app, &err),
+            Action::InstallFailed { version, message } => {
+                handle_install_failed(app, &version, &message);
+            }
+            Action::UpdateFailed { target, message } => {
+                handle_update_failed(app, &target, &message);
+            }
             Action::Use(v) => handle_use(app, manager, &v),
             Action::Delete(v) => handle_delete(app, manager, action_tx, &v),
             Action::FixPath => handle_fix_path(app, manager),
@@ -121,7 +126,8 @@ fn start_install(
                     }
                 }
             } => {
-                logging::info("install cancelled by user (task aborted)");
+                // Not logged here: `handle_install_failed` writes the one
+                // `install: cancelled` line, with the version attached.
                 Err(crate::errors::GovmError::Cancelled)
             }
         };
@@ -131,7 +137,10 @@ fn start_install(
                 let _ = done_tx.send(Action::InstallDone(v));
             }
             Err(e) => {
-                let _ = done_tx.send(Action::InstallFailed(e.to_string()));
+                let _ = done_tx.send(Action::InstallFailed {
+                    version: v.raw_version.clone(),
+                    message: e.to_string(),
+                });
             }
         }
     });
@@ -154,10 +163,19 @@ fn handle_install_done(
             for ver in &mut app.state.versions {
                 ver.active = ver.raw_version == v.raw_version;
             }
+            // The success half of the auto-activation used to live only in the
+            // status bar, which is gone by the time anyone reads the log.
+            logging::info(&format!(
+                "post-install: auto-activated version={} shim_in_path={in_path}",
+                v.raw_version
+            ));
             true
         }
         Err(e) => {
-            logging::error(&format!("auto-activate failed after install: {e}"));
+            logging::error(&format!(
+                "post-install: auto-activate failed version={} error=\"{e}\" note=install_succeeded",
+                v.raw_version
+            ));
             false
         }
     };
@@ -180,15 +198,38 @@ fn handle_install_done(
 }
 
 /// Clears the install busy state and reports a failed installation.
-fn handle_install_failed(app: &mut App, err: &str) {
+///
+/// This is the *only* place an install failure is logged: the manager layers
+/// return errors, and the handler that turns one into a user-visible message
+/// owns the audit line (with the version, which the message alone may not carry).
+fn handle_install_failed(app: &mut App, version: &str, message: &str) {
     app.state.busy = None;
     app.state.cancel_install = None;
-    if err.contains("cancelled") {
+    if is_user_cancel(message) {
+        logging::info(&format!(
+            "install: cancelled version={version} note=user_abort"
+        ));
         app.set_status("Installation cancelled", MsgKind::Info);
     } else {
-        logging::error(&format!("install failed: {err}"));
-        app.set_status(format!("Installation failed: {err}"), MsgKind::Error);
+        logging::error(&format!(
+            "install: failed version={version} error=\"{message}\"{}",
+            failure_hint(message)
+        ));
+        app.set_status(format!("Installation failed: {message}"), MsgKind::Error);
     }
+}
+
+/// Reports a failed self-update under its own `update:` prefix.
+///
+/// Separate from [`handle_install_failed`] on purpose: an update failure used to
+/// be stamped `install failed: Update failed: ...`, which sent anyone reading the
+/// log looking at Go toolchain installs instead of at the running binary.
+fn handle_update_failed(app: &mut App, target: &str, message: &str) {
+    logging::error(&format!(
+        "update: failed target={target} error=\"{message}\"{}",
+        failure_hint(message)
+    ));
+    app.set_status(format!("Update failed: {message}"), MsgKind::Error);
 }
 
 /// Switches the active toolchain and updates local UI state immediately.
@@ -208,7 +249,11 @@ fn handle_use(app: &mut App, manager: &Arc<GoManager>, v: &GoVersion) {
             }
         }
         Err(e) => {
-            logging::error(&format!("use failed: {e}"));
+            logging::error(&format!(
+                "use: failed version={} error=\"{e}\"{}",
+                v.raw_version,
+                failure_hint(&e.to_string())
+            ));
             app.set_status(e.to_string(), MsgKind::Error);
         }
     }
@@ -226,10 +271,16 @@ fn handle_delete(
     app.state.busy = Some(BusyState::Deleting(v.raw_version.clone()));
     match manager.delete_version(v) {
         Ok(()) => {
+            // The freed-space figure is logged by `delete_version`, which is the
+            // only layer that saw the directory before it was removed.
             app.set_status(format!("Deleted Go {}", v.raw_version), MsgKind::Success);
         }
         Err(e) => {
-            logging::error(&format!("delete failed: {e}"));
+            logging::error(&format!(
+                "delete: failed version={} error=\"{e}\"{}",
+                v.raw_version,
+                failure_hint(&e.to_string())
+            ));
             app.set_status(e.to_string(), MsgKind::Error);
         }
     }
@@ -262,7 +313,9 @@ fn handle_fix_path(app: &mut App, manager: &Arc<GoManager>) {
             app.state.is_shim_in_path = manager.get_shim_manager().is_in_path();
         }
         Err(e) => {
-            logging::error(&format!("fix-path failed: {e}"));
+            // Sole owner of the fix-path failure line: the help overlay's `f` key
+            // dispatches `Action::FixPath` too, so exactly one place can report it.
+            logging::error(&format!("fix-path: failed error=\"{e}\""));
             app.set_status(format!("Could not fix PATH: {e}"), MsgKind::Error);
         }
     }
@@ -282,7 +335,10 @@ fn spawn_update(
         match mgr.check_for_update().await {
             Ok(Some(ver)) => {
                 if let Err(e) = mgr.perform_update(&ver).await {
-                    let _ = tx.send(Action::InstallFailed(format!("Update failed: {e}")));
+                    let _ = tx.send(Action::UpdateFailed {
+                        target: ver.clone(),
+                        message: e.to_string(),
+                    });
                 } else {
                     let _ = tx.send(Action::UpdateDone(format!(
                         "Updated to v{ver}! Restart govmr to run it."
@@ -296,7 +352,10 @@ fn spawn_update(
                 ));
             }
             Err(e) => {
-                let _ = tx.send(Action::InstallFailed(e.to_string()));
+                let _ = tx.send(Action::UpdateFailed {
+                    target: "unknown".to_string(),
+                    message: e.to_string(),
+                });
             }
         }
     });
@@ -313,4 +372,28 @@ fn handle_uninstall(app: &mut App, manager: &Arc<GoManager>, purge: bool) {
         };
         app.set_status(msg, MsgKind::Success);
     }
+}
+
+/// Whether a failure message is really the user pressing cancel.
+fn is_user_cancel(message: &str) -> bool {
+    message.to_lowercase().contains("cancelled")
+}
+
+/// Appends a `hint="..."` field to a failure line when the message matches a
+/// known, actionable cause.
+///
+/// Hints live in the log only: the status bar stays short enough to read in one
+/// glance, while whoever later greps the file gets the "so what do I do" half.
+fn failure_hint(message: &str) -> String {
+    let lower = message.to_lowercase();
+    let hint = if lower.contains("text file busy") || lower.contains("os error 26") {
+        "the running binary is locked; quit other govmr instances and retry (or replace the executable manually)"
+    } else if lower.contains("is not a tar.gz archive") || lower.contains("is not a zip archive") {
+        "server sent a non-archive payload; check proxy/captive portal, or whether the release file exists"
+    } else if lower.contains("permission denied") {
+        "~/.govmr is not writable by the current user"
+    } else {
+        return String::new();
+    };
+    format!(" hint=\"{hint}\"")
 }

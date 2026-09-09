@@ -18,8 +18,22 @@ pub enum Action {
     InstallProgress(InstallProgress),
     /// Installation finished successfully.
     InstallDone(GoVersion),
-    /// Installation failed with the supplied message.
-    InstallFailed(String),
+    /// Installation failed; carries the version that was being installed (so the
+    /// audit line can name its target) and the message shown to the user.
+    InstallFailed {
+        /// Version the install was targeting (e.g. `1.27.1`).
+        version: String,
+        /// Rendered error message.
+        message: String,
+    },
+    /// The govmr self-update failed. Kept apart from `InstallFailed` so an update
+    /// failure is never logged as an install failure.
+    UpdateFailed {
+        /// Release tag the update was aiming for (`unknown` when the check failed).
+        target: String,
+        /// Rendered error message.
+        message: String,
+    },
     /// Activate the specified Go version via shims.
     Use(GoVersion),
     /// Remove an installed Go version from disk.

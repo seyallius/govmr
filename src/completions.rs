@@ -42,24 +42,23 @@ struct CompletionTarget {
 /// Called once at startup from `main()`. Safe to call repeatedly: unchanged
 /// completions produce only debug-level log noise.
 pub fn ensure_completions() {
-    logging::debug("completions: checking for updates...");
+    logging::debug("completions: check started");
 
     let targets = detect_shell_targets();
     if targets.is_empty() {
-        logging::debug("completions: no targets resolved, skipping");
+        logging::debug("completions: skipped reason=no_targets_detected");
         return;
     }
 
     let Some(completions_dir) = get_completions_dir() else {
-        logging::warn("completions: cannot resolve ~/.govmr, skipping");
+        logging::warn("completions: skipped reason=no_home_dir");
         return;
     };
 
     if let Err(e) = fs::create_dir_all(&completions_dir) {
         logging::warn(&format!(
-            "completions: failed to create {}: {}",
-            completions_dir.display(),
-            e
+            "completions: create dir failed path=\"{}\" error={e}",
+            completions_dir.display()
         ));
         return;
     }
@@ -82,33 +81,31 @@ pub fn ensure_completions() {
         if stale {
             if let Err(e) = fs::write(&canonical, &buf) {
                 logging::warn(&format!(
-                    "completions: failed to write {}: {}",
-                    canonical.display(),
-                    e
+                    "completions: write failed path=\"{}\" error={e}",
+                    canonical.display()
                 ));
                 continue;
             }
             logging::info(&format!(
-                "completions: updated {} script at {} (restart your shell or source it to reload)",
+                "completions: updated shell={} path=\"{}\" note=reload_shell_to_apply",
                 target.shell,
                 canonical.display()
             ));
         } else {
-            logging::debug(&format!("completions: {} script up to date", target.shell));
+            logging::debug(&format!("completions: up to date shell={}", target.shell));
         }
 
         // Ensure the shell-facing link is correct
         if !is_link_valid(&target.link_path, &canonical) {
             match create_link(&canonical, &target.link_path) {
                 Ok(()) => logging::debug(&format!(
-                    "completions: linked {} -> {}",
+                    "completions: linked link=\"{}\" target=\"{}\"",
                     target.link_path.display(),
                     canonical.display()
                 )),
                 Err(e) => logging::warn(&format!(
-                    "completions: failed to link {}: {}",
-                    target.link_path.display(),
-                    e
+                    "completions: link failed link=\"{}\" error={e}",
+                    target.link_path.display()
                 )),
             }
         }
@@ -120,21 +117,20 @@ pub fn ensure_completions() {
 /// Called during uninstall so no orphaned completion files survive, regardless
 /// of whether the user chose to purge `~/.govmr`.
 pub fn remove_completions() {
-    logging::debug("completions: removing all completion files...");
+    logging::debug("completions: removal started");
 
     for target in &all_possible_targets() {
         // Remove the shell-facing link (symlink on Unix, copied file on Windows).
         if target.link_path.symlink_metadata().is_ok() {
             match fs::remove_file(&target.link_path) {
                 Ok(()) => logging::info(&format!(
-                    "completions: removed {} link at {}",
+                    "completions: removed shell={} link=\"{}\"",
                     target.shell,
                     target.link_path.display()
                 )),
                 Err(e) => logging::warn(&format!(
-                    "completions: failed to remove {}: {}",
-                    target.link_path.display(),
-                    e
+                    "completions: remove link failed path=\"{}\" error={e}",
+                    target.link_path.display()
                 )),
             }
         }
@@ -145,11 +141,10 @@ pub fn remove_completions() {
         && dir.exists()
     {
         match fs::remove_dir_all(&dir) {
-            Ok(()) => logging::info(&format!("completions: removed {}", dir.display())),
+            Ok(()) => logging::info(&format!("completions: removed dir=\"{}\"", dir.display())),
             Err(e) => logging::warn(&format!(
-                "completions: failed to remove {}: {}",
-                dir.display(),
-                e
+                "completions: remove dir failed path=\"{}\" error={e}",
+                dir.display()
             )),
         }
     }
@@ -180,14 +175,14 @@ fn detect_shell_targets() -> Vec<CompletionTarget> {
 
     if let Some(name) = detected {
         logging::debug(&format!(
-            "completions: detected shell '{name}' ($SHELL={shell_env})",
+            "completions: detected shell={name} shell_env=\"{shell_env}\""
         ));
     } else if !shell_env.is_empty() {
         logging::warn(&format!(
-            "completions: unrecognised $SHELL '{shell_env}', generating for all shells",
+            "completions: unrecognised shell_env=\"{shell_env}\" action=generate_for_all_shells"
         ));
     } else {
-        logging::debug("completions: $SHELL empty, generating for all shells");
+        logging::debug("completions: shell_env empty; action=generate_for_all_known_shells");
     }
 
     all_possible_targets()

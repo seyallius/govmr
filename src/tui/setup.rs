@@ -30,8 +30,15 @@ pub fn run_setup_guide_if_needed<B: Backend>(
     manager: &GoManager,
 ) -> io::Result<bool> {
     if shim_in_path {
+        // Logged even when nothing happens: "did onboarding run at all?" is the
+        // first question a PATH bug report raises.
+        logging::debug("setup: skipped reason=shim_in_path");
         return Ok(true);
     }
+
+    logging::info(&format!(
+        "setup: shown reason=shim_not_in_path shim_dir=\"{shim_path}\""
+    ));
 
     let mut local_notice: Option<Vec<Line<'static>>> = None;
     loop {
@@ -41,12 +48,15 @@ pub fn run_setup_guide_if_needed<B: Backend>(
             && key.kind == KeyEventKind::Press
         {
             if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                logging::info("setup: dismissed reason=interrupt note=app_not_started");
                 return Ok(false);
             }
             if key.code == KeyCode::Char('q') {
+                logging::info("setup: dismissed reason=quit note=app_not_started");
                 return Ok(false);
             }
             if key.code == KeyCode::Char('f') {
+                logging::debug("setup: fix requested via=guide");
                 match manager.fix_path_permanently() {
                     Ok(lines) => {
                         local_notice = Some(
@@ -66,6 +76,9 @@ pub fn run_setup_guide_if_needed<B: Backend>(
                         );
                     }
                     Err(e) => {
+                        // This handler renders the failure into the modal, so it
+                        // also owns the log line (`fix_path_permanently` only returns).
+                        logging::error(&format!("setup: fix failed error=\"{e}\""));
                         local_notice = Some(vec![
                             Line::from(Span::styled(
                                 "Failed to fix PATH:".to_string(),
@@ -75,9 +88,11 @@ pub fn run_setup_guide_if_needed<B: Backend>(
                         ]);
                     }
                 }
+                logging::debug("setup: fix result shown");
                 continue; // Stay in the loop to show the result
             }
             // ANY other key press closes the modal and proceeds to the app
+            logging::info("setup: dismissed reason=continued");
             return Ok(true);
         }
     }

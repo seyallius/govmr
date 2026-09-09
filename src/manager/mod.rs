@@ -21,7 +21,7 @@ use std::{
     fs,
     path::PathBuf,
     sync::Mutex,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 // ---------------------------------- Types, Variables & Constants ------------------------------ //
@@ -105,8 +105,36 @@ impl GoManager {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .set_theme(theme)?;
-        logging::info(&format!("theme set: {}", theme.key()));
+        logging::info(&format!(
+            "theme: set name={} config=\"{}\"",
+            theme.key(),
+            self.base_dir.join("config.toml").display()
+        ));
         Ok(Theme::for_name(theme))
+    }
+
+    /// Lists the versions present on disk as bare version strings, newest first.
+    ///
+    /// Purely local (a single `readdir`), so it is cheap enough to call from the
+    /// session bookend where the log needs the final installed state.
+    #[must_use]
+    pub fn installed_versions(&self) -> Vec<String> {
+        let mut versions = Vec::new();
+        if let Ok(entries) = fs::read_dir(&self.versions_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                // Only count a directory as installed if it has a `bin/` — the
+                // same rule the manifest cross-reference uses.
+                if path.is_dir()
+                    && path.join("bin").exists()
+                    && let Some(name) = path.file_name().and_then(|n| n.to_str())
+                {
+                    versions.push(name.strip_prefix("go").unwrap_or(name).to_string());
+                }
+            }
+        }
+        versions.sort_by(|a, b| compare_versions(b, a));
+        versions
     }
 
     /// Retrieves the currently active Go version string from disk, if set.
@@ -123,24 +151,9 @@ impl GoManager {
     /// Returns [`GovmError::Network`] if the request fails or [`GovmError::Io`] on filesystem read failure.
     pub async fn fetch_versions(&self) -> Result<Vec<GoVersion>, GovmError> {
         let url = "https://go.dev/dl/?mode=json&include=all";
-        logging::debug(&format!("refresh: GET {url}"));
-        let res = self.client.get(url).send().await.map_err(|e| {
-            logging::error(&format!("refresh failed (request): {e}"));
-            GovmError::from(e)
-        })?;
-        let status = res.status();
-        if !status.is_success() {
-            logging::error(&format!("refresh failed: HTTP {status} for {}", res.url()));
-            return Err(GovmError::HttpStatus {
-                status: status.as_u16(),
-                url: res.url().to_string(),
-            });
-        }
-        let releases: Vec<GoRelease> = res.json().await.map_err(|e| {
-            logging::error(&format!("refresh failed (decode): {e}"));
-            GovmError::from(e)
-        })?;
-
+        // Which files we will accept is part of the request, so normalize the
+        // host identity *before* fetching and log it: "why is 1.20.14 missing"
+        // is answered by the arch token, and the two lines must agree on names.
         let go_os = match OS {
             "macos" => "darwin",
             other => other,
@@ -150,9 +163,35 @@ impl GoManager {
             "aarch64" => "arm64",
             other => other,
         };
+        logging::debug(&format!(
+            "refresh started: url={url} os={go_os} arch={go_arch}"
+        ));
+        let res = self.client.get(url).send().await.map_err(|e| {
+            logging::error(&format!("refresh: failed stage=request error=\"{e}\""));
+            GovmError::from(e)
+        })?;
+        let status = res.status();
+        if !status.is_success() {
+            logging::error(&format!(
+                "refresh: failed stage=response status={status} url={}",
+                res.url()
+            ));
+            return Err(GovmError::HttpStatus {
+                status: status.as_u16(),
+                url: res.url().to_string(),
+            });
+        }
+        let releases: Vec<GoRelease> = res.json().await.map_err(|e| {
+            logging::error(&format!("refresh: failed stage=decode error=\"{e}\""));
+            GovmError::from(e)
+        })?;
 
         let active_version = self.get_active_version();
         let mut versions = Vec::new();
+        // Releases that ship no archive for this host OS/arch (e.g. a `linux-386`
+        // only build). Counted so "missing version" reports can be told apart
+        // from "version does not exist".
+        let mut skipped = 0usize;
 
         for release in releases {
             let ver_clean = release.version.trim_start_matches("go").to_string();
@@ -176,11 +215,16 @@ impl GoManager {
                     path: if installed { Some(install_dir) } else { None },
                     stable: release.stable,
                 });
+            } else {
+                skipped += 1;
             }
         }
 
         versions.sort_by(|a, b| compare_versions(&b.raw_version, &a.raw_version));
-        logging::info(&format!("refresh ok: {} versions listed", versions.len()));
+        logging::info(&format!(
+            "refresh ok: count={} os={go_os} arch={go_arch} skipped={skipped}",
+            versions.len()
+        ));
         Ok(versions)
     }
 
@@ -193,21 +237,33 @@ impl GoManager {
     /// Returns [`GovmError`] if shim generation or the active-version file
     /// write fails, or [`GovmError::NotInstalled`] if the version has no local path.
     pub fn switch_version(&self, version: &GoVersion) -> Result<bool, GovmError> {
-        let version_path = version
-            .path
-            .as_ref()
-            .ok_or_else(|| GovmError::NotInstalled(version.raw_version.clone()))?;
+        // "Version X is not installed" is misleading unless the log says *where*
+        // we looked, so a stale manifest entry can be told apart from a
+        // genuinely missing toolchain directory.
+        let Some(version_path) = version.path.as_ref() else {
+            let expected = self.versions_dir.join(format!("go{}", version.raw_version));
+            logging::warn(&format!(
+                "use rejected: version={} reason=no_path_in_manifest checked=\"{}\" manifest_installed={} bin_present={}",
+                version.raw_version,
+                expected.display(),
+                version.installed,
+                expected.join("bin").exists()
+            ));
+            return Err(GovmError::NotInstalled(version.raw_version.clone()));
+        };
         let bin_dir = version_path.join("bin");
 
         self.shim_mgr.setup_shims_for_version(&bin_dir)?;
 
         let active_file = self.base_dir.join("active_version");
-        fs::write(active_file, &version.raw_version)?;
+        fs::write(&active_file, &version.raw_version)?;
 
         let is_in_path = self.shim_mgr.is_in_path();
         logging::info(&format!(
-            "use: active version is now go{} (shim in PATH: {is_in_path})",
-            version.raw_version
+            "use: activated version={} shim_in_path={} active_file=\"{}\"",
+            version.raw_version,
+            is_in_path,
+            active_file.display()
         ));
         Ok(is_in_path)
     }
@@ -227,9 +283,20 @@ impl GoManager {
         if let Some(path) = &version.path
             && path.exists()
         {
+            let freed = dir_size(path);
             fs::remove_dir_all(path)?;
+            logging::info(&format!(
+                "delete: removed version={} freed_bytes={freed} freed=\"{}\" path=\"{}\"",
+                version.raw_version,
+                GoVersion::format_size(freed),
+                path.display()
+            ));
+        } else {
+            logging::warn(&format!(
+                "delete: removed version={} freed_bytes=0 note=no_path_on_disk",
+                version.raw_version
+            ));
         }
-        logging::info(&format!("delete: removed go{}", version.raw_version));
         Ok(())
     }
 
@@ -279,7 +346,7 @@ impl GoManager {
                 )));
             }
 
-            logging::info("fix-path: Windows User PATH updated (new terminals only)");
+            logging::info("fix-path: applied target=windows_user_path note=new_terminals_only");
             Ok(vec![
                 "Done — ran in a hidden PowerShell window:".to_string(),
                 format!("    {script}"),
@@ -302,7 +369,10 @@ impl GoManager {
             let existing = fs::read_to_string(&profile).unwrap_or_default();
             // Idempotency guard: never append the same line twice.
             if existing.lines().any(|l| l.trim_start().starts_with(marker)) {
-                logging::info("fix-path: profile already patched, nothing to do");
+                logging::info(&format!(
+                    "fix-path: skipped profile=\"{}\" reason=already_patched",
+                    profile.display()
+                ));
                 return Ok(vec![
                     format!(
                         "Already done — {} already contains the govmr export line.",
@@ -322,7 +392,7 @@ impl GoManager {
             writeln!(file, "{source_path}")?;
 
             logging::info(&format!(
-                "fix-path: appended export line to {}",
+                "fix-path: applied profile=\"{}\" line=\"{source_path}\"",
                 profile.display()
             ));
             Ok(vec![
@@ -346,7 +416,9 @@ impl GoManager {
             .await?;
 
         if res.status().as_u16() == 404 {
-            logging::info("update: no public releases published yet");
+            // An expected state (a repo that has not published a release yet),
+            // so it is a diagnostic, not something to tell the user about.
+            logging::debug("update check: status=404 note=no_public_releases");
             return Ok(None);
         }
 
@@ -386,9 +458,25 @@ impl GoManager {
             "https://github.com/seyallius/govmr/releases/download/v{version}/govmr-v{version}-{target}.{ext}"
         );
 
-        logging::info(&format!("update: downloading {url}"));
+        let current = env!("CARGO_PKG_VERSION");
+        logging::info(&format!(
+            "update: downloading current={current} target={version} url={url}"
+        ));
+        let started_at = Instant::now();
         let res = self.client.get(&url).send().await?;
+        let status = res.status();
+        if !status.is_success() {
+            return Err(GovmError::HttpStatus {
+                status: status.as_u16(),
+                url: res.url().to_string(),
+            });
+        }
         let bytes = res.bytes().await?;
+        logging::debug(&format!(
+            "update: archive fetched target={version} bytes={} elapsed_ms={}",
+            bytes.len(),
+            started_at.elapsed().as_millis()
+        ));
 
         let temp_dir = std::env::temp_dir().join("govmr_update");
         let _ = fs::create_dir_all(&temp_dir);
@@ -445,7 +533,11 @@ impl GoManager {
             }
         }
 
-        logging::info("update: binary replaced successfully");
+        logging::info(&format!(
+            "update: replaced current={current} target={version} exe=\"{}\" elapsed_ms={}",
+            current_exe.display(),
+            started_at.elapsed().as_millis()
+        ));
         Ok(())
     }
 
@@ -487,9 +579,9 @@ impl GoManager {
                 .creation_flags(CREATE_NO_WINDOW) // CREATE_NO_WINDOW: never flash a console
                 .spawn()
             {
-                Ok(_) => logging::info("uninstall: scheduled background deletion of executable"),
+                Ok(_) => logging::info("uninstall: scheduled exe=removed_on_exit"),
                 Err(e) => logging::warn(&format!(
-                    "uninstall: failed to schedule background deletion: {e}. Please manually delete the executable."
+                    "uninstall: schedule failed error=\"{e}\" note=delete_the_executable_manually"
                 )),
             }
         }
@@ -497,7 +589,7 @@ impl GoManager {
         #[cfg(not(windows))]
         {
             fs::remove_file(&exe)?;
-            logging::info("uninstall: removed executable");
+            logging::info(&format!("uninstall: removed exe=\"{}\"", exe.display()));
         }
 
         // 2. Binary is gone (or scheduled to be). Now clean up completions.
@@ -509,10 +601,37 @@ impl GoManager {
             let base_dir = home.join(".govmr");
             if base_dir.exists() {
                 fs::remove_dir_all(&base_dir)?;
-                logging::info("uninstall: purged ~/.govmr");
+                logging::info(&format!(
+                    "uninstall: purged path=\"{}\"",
+                    base_dir.display()
+                ));
             }
         }
 
         Ok(())
     }
+}
+
+// -------------------------------------- Internal Helpers -------------------------------------- //
+
+/// Recursively sums the size of a directory tree, for "how much space did this
+/// free?" reporting.
+///
+/// Best-effort by design: unreadable or vanished entries count as zero rather
+/// than failing the operation that merely wanted a number for the log. Symlinks
+/// are measured, not followed, so a link cannot be double-counted or loop.
+fn dir_size(path: &std::path::Path) -> u64 {
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| {
+            let child = entry.path();
+            match entry.file_type() {
+                Ok(ft) if ft.is_dir() => dir_size(&child),
+                _ => fs::symlink_metadata(&child).map_or(0, |meta| meta.len()),
+            }
+        })
+        .sum()
 }
