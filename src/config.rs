@@ -6,6 +6,12 @@
 
 use crate::{logging, theme::ThemeName};
 use serde::{Deserialize, Serialize};
+use std::env;
+
+/// Allow overriding the "current" version for testing purposes.
+const GOVMR_TEST_VERSION: &str = "GOVMR_TEST_VERSION";
+
+// ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// On-disk layout of `~/.govmr/config.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,7 +20,6 @@ struct ConfigFile {
     #[serde(default)]
     theme: String,
 }
-
 impl Default for ConfigFile {
     fn default() -> Self {
         Self {
@@ -33,7 +38,6 @@ pub struct Config {
     /// Path to the backing TOML file.
     path: std::path::PathBuf,
 }
-
 impl Config {
     /// Loads configuration from `<base_dir>/config.toml`, falling back to (and
     /// migrating) the legacy `<base_dir>/config` key/value file if present.
@@ -143,6 +147,16 @@ impl Config {
         Ok(())
     }
 }
+
+// ----------------------------------------- Public API ----------------------------------------- //
+
+/// Returns the current cargo package version. If [`GOVMR_TEST_VERSION`]
+/// is configured in the path, it'll return that version.
+pub fn current_govmr_version() -> String {
+    env::var(GOVMR_TEST_VERSION).unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string())
+}
+
+// -------------------------------------- Internal Helpers -------------------------------------- //
 
 /// Extracts `theme = <key>` from the legacy plain-text config format.
 fn parse_legacy_theme(contents: &str) -> Option<String> {

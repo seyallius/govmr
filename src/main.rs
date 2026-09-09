@@ -7,23 +7,11 @@ use clap::Parser;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use govmr::{
-    app::{self, Action, App},
-    cli::{self, Cli},
-    completions, logging,
-    manager::GoManager,
-    tui,
-};
-use ratatui::{Terminal, backend::CrosstermBackend};
-use std::{
-    env::consts::{ARCH, OS},
-    io,
-    sync::Arc,
-    sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
-};
+use govmr::{app::{self, Action, App}, cli::{self, Cli}, completions, config, logging, manager::GoManager, tui};
+use ratatui::{backend::CrosstermBackend, Terminal};
+use std::{env::consts::{ARCH, OS}, io, sync::atomic::{AtomicBool, Ordering}, sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 
 // ------------------------------------------- <Main> ------------------------------------------- //
@@ -53,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
     };
     logging::info(&format!(
         "govmr {} started: mode={mode} os={OS} arch={ARCH}{args}",
-        env!("CARGO_PKG_VERSION")
+        config::current_govmr_version()
     ));
 
     // `GoManager::new()` resolves $HOME, creates ~/.govmr subdirectories, loads the

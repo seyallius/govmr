@@ -8,15 +8,16 @@ pub use archive::check_archive_magic;
 pub use install::InstallProgress;
 
 use crate::{
-    completions,
+    completions, config,
     config::Config,
     errors::GovmError,
     logging,
     manager::update::replace_current_binary,
     shim::ShimManager,
     theme::{Theme, ThemeName},
-    version::{GoRelease, GoVersion, compare_versions},
+    version::{compare_versions, GoRelease, GoVersion},
 };
+use futures_util::StreamExt;
 use std::{
     env::{
         self,
@@ -33,9 +34,6 @@ use std::{
 /// Prevents a console window from appearing.
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-/// Allow overriding the "current" version for testing purposes.
-const GOVMR_TEST_VERSION: &str = "GOVMR_TEST_VERSION";
 
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
@@ -445,8 +443,7 @@ impl GoManager {
             if tag.is_empty() { "none" } else { tag }
         ));
 
-        let current =
-            env::var(GOVMR_TEST_VERSION).unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
+        let current = config::current_govmr_version();
         if !tag.is_empty() && tag != current {
             Ok(Some(tag.to_string()))
         } else {
@@ -461,7 +458,10 @@ impl GoManager {
     ///
     /// # Errors
     /// Returns [`GovmError`] if any download, archive-extraction, or file-replacement step fails.
-    pub async fn perform_update(&self, version: &str) -> Result<(), GovmError> {
+    pub async fn perform_update<F>(&self, version: &str, progress: F) -> Result<(), GovmError>
+    where
+        F: Fn(InstallProgress) + Send + 'static,
+    {
         let os = match OS {
             "macos" => "apple-darwin",
             "linux" => "unknown-linux-gnu",
@@ -475,8 +475,7 @@ impl GoManager {
             "https://github.com/seyallius/govmr/releases/download/v{version}/govmr-v{version}-{target}.{ext}"
         );
 
-        let current =
-            env::var(GOVMR_TEST_VERSION).unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
+        let current = config::current_govmr_version();
         logging::info(&format!(
             "update: downloading current={current} target={version} url={url}"
         ));
@@ -490,18 +489,60 @@ impl GoManager {
                 url: res.url().to_string(),
             });
         }
-        let bytes = res.bytes().await?;
-        let archive_bytes = bytes.len() as u64;
+
+        let total_size = res.content_length().unwrap_or(0);
+        let mut downloaded: u64 = 0;
+        let mut stream = res.bytes_stream();
+
+        let mut last_report = Instant::now();
+        let mut last_bytes: u64 = 0;
+        let mut smoothed_speed: f64 = 0.0;
+        let mut bytes_buf = Vec::new();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            bytes_buf.extend_from_slice(&chunk);
+            downloaded += chunk.len() as u64;
+
+            let now = Instant::now();
+            let elapsed = now.duration_since(last_report).as_secs_f64();
+            if elapsed >= 0.25 || total_size == 0 {
+                #[allow(clippy::cast_precision_loss)]
+                let instant_speed = (downloaded - last_bytes) as f64 / elapsed.max(1e-3);
+                smoothed_speed = if smoothed_speed == 0.0 {
+                    instant_speed
+                } else {
+                    smoothed_speed * 0.6 + instant_speed * 0.4
+                };
+
+                progress(InstallProgress::Downloading {
+                    downloaded,
+                    total: total_size,
+                    bytes_per_sec: smoothed_speed,
+                });
+                last_report = now;
+                last_bytes = downloaded;
+            }
+        }
+
+        progress(InstallProgress::Downloading {
+            downloaded,
+            total: total_size,
+            bytes_per_sec: smoothed_speed,
+        });
+        progress(InstallProgress::Extracting);
+
         logging::debug(&format!(
-            "update: archive fetched target={version} bytes={archive_bytes} size=\"{}\" elapsed_ms={}",
-            GoVersion::format_size(archive_bytes),
-            started_at.elapsed().as_millis()
+            "update: archive fetched target={version} size={} ({} bytes) elapsed_time={}s",
+            GoVersion::format_size(bytes_buf.len() as u64),
+            bytes_buf.len(),
+            started_at.elapsed().as_secs()
         ));
 
-        let temp_dir = std::env::temp_dir().join("govmr_update");
+        let temp_dir = env::temp_dir().join("govmr_update");
         let _ = fs::create_dir_all(&temp_dir);
         let archive_path = temp_dir.join(format!("govmr.{ext}"));
-        fs::write(&archive_path, &bytes)?;
+        fs::write(&archive_path, &bytes_buf)?;
 
         let bin_name = if cfg!(windows) { "govmr.exe" } else { "govmr" };
         let new_bin_path = temp_dir.join(bin_name);

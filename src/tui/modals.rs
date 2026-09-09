@@ -36,32 +36,45 @@ pub(crate) fn render_theme_picker(
     }
 }
 
-/// Renders the centered installation progress modal with a live gauge.
-pub(crate) fn render_install_modal(
+/// Renders the centered progress modal for installs and self-updates.
+pub(crate) fn render_progress_modal(
     frame: &mut Frame,
     screen: Rect,
     busy: &BusyState,
     tick: u64,
     theme: &Theme,
 ) {
-    let BusyState::Installing {
-        version,
-        phase,
-        downloaded,
-        total,
-        speed,
-        ..
-    } = busy
-    else {
-        return;
+    let (version, phase, downloaded, total, speed, is_update) = match busy {
+        BusyState::Installing {
+            version,
+            phase,
+            downloaded,
+            total,
+            speed,
+            ..
+        } => (version.clone(), *phase, *downloaded, *total, *speed, false),
+        BusyState::Updating {
+            version,
+            phase,
+            downloaded,
+            total,
+            speed,
+            ..
+        } => (version.clone(), *phase, *downloaded, *total, *speed, true),
+        _ => return,
     };
+
     let area = centered_rect(62, 38, screen);
     clear_area(frame, area, theme);
+
+    let title_text = if is_update {
+        format!(" Updating govmr to {version} ")
+    } else {
+        format!(" Installing Go {version} ")
+    };
+
     let block = Block::default()
-        .title(Span::styled(
-            format!(" Installing Go {version} "),
-            theme.title(),
-        ))
+        .title(Span::styled(title_text, theme.title()))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(theme.border())
@@ -84,7 +97,7 @@ pub(crate) fn render_install_modal(
 
     match phase {
         Phase::Downloading => {
-            render_downloading_phase(frame, &rows, tick, *downloaded, *total, *speed, theme);
+            render_downloading_phase(frame, &rows, tick, downloaded, total, speed, theme);
         }
         Phase::Extracting => {
             render_extracting_phase(frame, &rows, tick, theme);

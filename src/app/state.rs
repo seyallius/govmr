@@ -81,6 +81,15 @@ pub enum BusyState {
         /// When the download started (for ETA calculations).
         started_at: Instant,
     },
+    /// Self-updating the govmr binary, with live progress.
+    Updating {
+        version: String,
+        phase: Phase,
+        downloaded: u64,
+        total: u64,
+        speed: f64,
+        started_at: Instant,
+    },
 }
 impl BusyState {
     /// Returns the version targeted by the busy operation, if any.
@@ -90,7 +99,8 @@ impl BusyState {
             BusyState::Refreshing => None,
             BusyState::Switching(v)
             | BusyState::Deleting(v)
-            | BusyState::Installing { version: v, .. } => Some(v),
+            | BusyState::Installing { version: v, .. }
+            | BusyState::Updating { version: v, .. } => Some(v),
         }
     }
 }

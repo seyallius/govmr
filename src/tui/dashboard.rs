@@ -4,7 +4,7 @@ use super::{
     help::render_command_help,
     logs::render_log_panel,
     modals::{
-        render_delete_modal, render_install_modal, render_system_prompt, render_theme_picker,
+        render_delete_modal, render_progress_modal, render_system_prompt, render_theme_picker,
     },
     setup::draw_setup_modal,
     status::render_status_bar,
@@ -116,8 +116,10 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     // otherwise bleed through the modal edges. The theme picker is deliberately
     // NOT included here: it paints an opaque background itself, so the live
     // dashboard stays visible behind it as a real-time preview.
-    let modal_active = matches!(state.busy, Some(BusyState::Installing { .. }))
-        || state.confirming_delete.is_some()
+    let modal_active = matches!(
+        state.busy,
+        Some(BusyState::Installing { .. } | BusyState::Updating { .. })
+    ) || state.confirming_delete.is_some()
         || state.show_help;
 
     let mut idx = 0;
@@ -164,9 +166,12 @@ pub fn render_overlays(frame: &mut Frame, state: &AppState) {
     }
 
     if let Some(busy) = &state.busy
-        && matches!(busy, BusyState::Installing { .. })
+        && matches!(
+            busy,
+            BusyState::Installing { .. } | BusyState::Updating { .. }
+        )
     {
-        render_install_modal(frame, size, busy, state.tick_count, &theme);
+        render_progress_modal(frame, size, busy, state.tick_count, &theme);
     }
 
     if state.confirming_delete.is_some() {
@@ -279,8 +284,10 @@ fn render_content(frame: &mut Frame, area: Rect, state: &mut AppState, theme: &T
 
     // While a blocking modal is on screen, hide the list entirely so padded
     // rows and borders can't bleed through the modal.
-    let modal_up = matches!(state.busy, Some(BusyState::Installing { .. }))
-        || state.confirming_delete.is_some()
+    let modal_up = matches!(
+        state.busy,
+        Some(BusyState::Installing { .. } | BusyState::Updating { .. })
+    ) || state.confirming_delete.is_some()
         || state.show_help;
     if modal_up {
         return;

@@ -54,6 +54,14 @@ pub(crate) fn render_status_bar(frame: &mut Frame, area: Rect, state: &AppState,
                 total,
                 speed,
                 ..
+            }
+            | BusyState::Updating {
+                version,
+                phase,
+                downloaded,
+                total,
+                speed,
+                ..
             } => {
                 let pct = download_percent(*downloaded, *total);
                 match phase {

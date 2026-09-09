@@ -260,7 +260,18 @@ async fn cmd_update(manager: &GoManager) -> Result<()> {
                 paint(GREEN, "✨"),
                 new_version
             );
-            manager.perform_update(&new_version).await?;
+            let bar_style = ProgressStyle::with_template(
+                            "  {spinner:.cyan} {bar:40.cyan/blue} {percent:>3}% {bytes:>10} / {total_bytes:<10} {bytes_per_sec:<12} eta {eta}",
+                        )?
+                        .progress_chars("█▓▒░ ");
+            let spin_style = ProgressStyle::with_template("  {spinner:.green} {msg}")?;
+            let progress = Arc::new(CliProgress::new(bar_style, spin_style));
+            let progress_cb = progress.clone();
+
+            manager
+                .perform_update(&new_version, move |event| progress_cb.on_event(event))
+                .await?;
+            progress.finish();
             println!(
                 "{} Updated to {}! Please restart govmr.",
                 paint(GREEN, "✅"),

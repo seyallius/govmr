@@ -622,4 +622,44 @@ impl App {
             }
         }
     }
+
+    /// Applies a [`InstallProgress`] event to the active self-update state.
+    pub fn update_update_progress(&mut self, progress: InstallProgress) {
+        if let Some(BusyState::Updating {
+            version,
+            phase: _,
+            downloaded,
+            total,
+            speed,
+            started_at,
+        }) = self.state.busy.clone()
+        {
+            match progress {
+                InstallProgress::Downloading {
+                    downloaded: d,
+                    total: t,
+                    bytes_per_sec,
+                } => {
+                    self.state.busy = Some(BusyState::Updating {
+                        version,
+                        phase: Phase::Downloading,
+                        downloaded: d,
+                        total: t,
+                        speed: bytes_per_sec,
+                        started_at,
+                    });
+                }
+                InstallProgress::Extracting => {
+                    self.state.busy = Some(BusyState::Updating {
+                        version,
+                        phase: Phase::Extracting,
+                        downloaded,
+                        total,
+                        speed,
+                        started_at,
+                    });
+                }
+            }
+        }
+    }
 }

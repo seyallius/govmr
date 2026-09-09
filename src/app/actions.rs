@@ -36,14 +36,33 @@ pub async fn handle_actions(
             Action::Install(v) => start_install(app, manager, action_tx, v),
             Action::InstallProgress(p) => app.update_install_progress(p),
             Action::InstallDone(v) => handle_install_done(app, manager, action_tx, &v),
-            Action::InstallFailed(message) => handle_install_failed(app, &message),
+            Action::InstallFailed(err) => {
+                // Route update errors to their own handler without adding a new enum variant.
+                // This keeps cargo-semver-checks happy and prevents a v2.0.0 bump!
+                if let Some(rest) = err.strip_prefix("[UPDATE]") {
+                    let (target, message) = rest.split_once("|||").unwrap_or(("unknown", rest));
+                    handle_update_failed(app, target, message);
+                } else {
+                    handle_install_failed(app, &err);
+                }
+            }
             Action::Use(v) => handle_use(app, manager, &v),
             Action::Delete(v) => handle_delete(app, manager, action_tx, &v),
             Action::FixPath => handle_fix_path(app, manager),
             Action::Update => spawn_update(app, manager, action_tx),
+            Action::UpdateStarted(ver) => {
+                if let Some(BusyState::Updating { version, .. }) = &mut app.state.busy {
+                    *version = ver;
+                }
+            }
+            Action::UpdateProgress(p) => app.update_update_progress(p),
             Action::Uninstall(purge) => handle_uninstall(app, manager, purge),
             Action::UninstallBinaryOnly => handle_uninstall(app, manager, false),
-            Action::UpdateDone(msg) => app.set_status(msg, MsgKind::Success),
+            Action::UpdateDone(msg) => {
+                app.state.busy = None;
+                app.state.cancel_install = None;
+                app.set_status(msg, MsgKind::Success);
+            }
         }
     }
     Ok(())
@@ -117,12 +136,14 @@ fn start_install(
                 // Wait for the cancel signal to become true
                 while !*cancel_rx.borrow() {
                     if cancel_rx.changed().await.is_err() {
-                        break; // Sender dropped
+                        // Sender dropped without requesting a cancel: wait
+                        // forever so only an explicit `true` can win the race.
+                        std::future::pending::<()>().await;
                     }
                 }
             } => {
                 // Not logged here: `handle_install_failed` writes the one
-                // `install: cancelled` line, with the version attached.
+                // `install: canceled` line, with the version attached.
                 Err(crate::errors::GovmError::Cancelled)
             }
         };
@@ -310,38 +331,85 @@ fn handle_fix_path(app: &mut App, manager: &Arc<GoManager>) {
     }
 }
 
-/// Spawns the background self-update check.
+/// Spawns the background self-update check and download, supporting cancellation.
 fn spawn_update(
     app: &mut App,
     manager: &Arc<GoManager>,
     action_tx: &mpsc::UnboundedSender<Action>,
 ) {
-    logging::info("update: started target=latest");
-    app.set_status("Checking for updates...", MsgKind::Info);
+    app.state.busy = Some(BusyState::Updating {
+        version: "latest".to_string(),
+        phase: Phase::Downloading,
+        downloaded: 0,
+        total: 0,
+        speed: 0.0,
+        started_at: std::time::Instant::now(),
+    });
+    app.state.status_message = None;
+
     let mgr = manager.clone();
     let tx = action_tx.clone();
+    let (cancel_tx, mut cancel_rx) = tokio::sync::watch::channel(false);
+    app.state.cancel_install = Some(cancel_tx); // Reuse the cancel channel
 
     tokio::spawn(async move {
-        match mgr.check_for_update().await {
-            Ok(Some(ver)) => {
-                if let Err(e) = mgr.perform_update(&ver).await {
-                    let _ = tx.send(Action::InstallFailed(format!("[UPDATE]{ver}|||{e}")));
-                } else {
-                    let _ = tx.send(Action::UpdateDone(format!(
-                        "Updated to v{ver}! Restart govmr to run it."
-                    )));
+        let _ = tokio::select! {
+            res = async {
+                match mgr.check_for_update().await {
+                    Ok(Some(ver)) => {
+                        let _ = tx.send(Action::UpdateStarted(ver.clone()));
+                        let progress_tx = tx.clone();
+                        if let Err(e) = mgr.perform_update(&ver, move |p| {
+                            let _ = progress_tx.send(Action::UpdateProgress(p));
+                        }).await {
+                            let _ = tx.send(Action::InstallFailed(format!("[UPDATE]{ver}|||{e}")));
+                        } else {
+                            let _ = tx.send(Action::UpdateDone(format!("Updated to v{ver}! Restart govmr to run it.")));
+                        }
+                        Ok(())
+                    }
+                    Ok(None) => {
+                        let _ = tx.send(Action::UpdateDone("You are already on the latest version.".to_string()));
+                        Ok(())
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Action::InstallFailed(format!("[UPDATE]unknown|||{e}")));
+                        Err(e)
+                    }
                 }
+            } => res,
+            () = async {
+                while !*cancel_rx.borrow() {
+                    if cancel_rx.changed().await.is_err() {
+                        // Sender dropped without requesting a cancel: wait
+                        // forever so only an explicit `true` can win the race.
+                        std::future::pending::<()>().await;
+                    }
+                }
+            } => {
+                let _ = tx.send(Action::InstallFailed("[UPDATE]latest|||cancelled".to_string()));
+                Err(crate::errors::GovmError::Cancelled)
             }
-            Ok(None) => {
-                let _ = tx.send(Action::UpdateDone(
-                    "You are already on the latest version.".to_string(),
-                ));
-            }
-            Err(e) => {
-                let _ = tx.send(Action::InstallFailed(format!("[UPDATE]unknown|||{e}")));
-            }
-        }
+        };
     });
+}
+
+/// Reports a failed self-update under its own `update:` prefix.
+fn handle_update_failed(app: &mut App, target: &str, message: &str) {
+    app.state.busy = None;
+    app.state.cancel_install = None;
+    if is_user_cancel(message) {
+        logging::info(&format!(
+            "update: cancelled target={target} note=user_abort"
+        ));
+        app.set_status("Update cancelled", MsgKind::Info);
+    } else {
+        logging::error(&format!(
+            "update: failed target={target} error=\"{message}\"{}",
+            failure_hint(message)
+        ));
+        app.set_status(format!("Update failed: {message}"), MsgKind::Error);
+    }
 }
 
 fn handle_uninstall(app: &mut App, manager: &Arc<GoManager>, purge: bool) {
