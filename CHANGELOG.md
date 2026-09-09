@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0](https://github.com/seyallius/govmr/compare/v1.1.1...v2.0.0) - 2026-09-09
+
+### Added
+
+- *(logs)* add clear, separator, and blank-line controls
+
+### Fixed
+
+- *(update)* replace running binary atomically to avoid ETXTBSY
+
+### Other
+
+- *(readme)* correct gif url usage
+
 ## [1.1.1](https://github.com/seyallius/govmr/compare/v1.1.0...v1.1.1) - 2026-09-09
 
 ### Fixed
