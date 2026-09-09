@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1](https://github.com/seyallius/govmr/compare/v1.1.0...v1.1.1) - 2026-09-09
+
+### Fixed
+
+- *(logging)* align update verbs and extract version before clearing
+- *(logging)* enforce single-error ownership and structured audit trail
+
 ## [1.1.0](https://github.com/seyallius/govmr/compare/v1.0.0...v1.1.0) - 2026-09-08
 
 ### Added
