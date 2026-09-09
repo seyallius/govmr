@@ -2,6 +2,7 @@
 
 mod archive;
 mod install;
+mod update;
 
 pub use archive::check_archive_magic;
 pub use install::InstallProgress;
@@ -11,13 +12,16 @@ use crate::{
     config::Config,
     errors::GovmError,
     logging,
+    manager::update::replace_current_binary,
     shim::ShimManager,
     theme::{Theme, ThemeName},
     version::{GoRelease, GoVersion, compare_versions},
 };
-use std::fs::File;
 use std::{
-    env::consts::{ARCH, OS},
+    env::{
+        self,
+        consts::{ARCH, OS},
+    },
     fs,
     path::PathBuf,
     sync::Mutex,
@@ -29,6 +33,9 @@ use std::{
 /// Prevents a console window from appearing.
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Allow overriding the "current" version for testing purposes.
+const GOVMR_TEST_VERSION: &str = "GOVMR_TEST_VERSION";
 
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
@@ -438,7 +445,8 @@ impl GoManager {
             if tag.is_empty() { "none" } else { tag }
         ));
 
-        let current = env!("CARGO_PKG_VERSION");
+        let current =
+            env::var(GOVMR_TEST_VERSION).unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
         if !tag.is_empty() && tag != current {
             Ok(Some(tag.to_string()))
         } else {
@@ -464,7 +472,8 @@ impl GoManager {
             "https://github.com/seyallius/govmr/releases/download/v{version}/govmr-v{version}-{target}.{ext}"
         );
 
-        let current = env!("CARGO_PKG_VERSION");
+        let current =
+            env::var(GOVMR_TEST_VERSION).unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
         logging::info(&format!(
             "update: downloading current={current} target={version} url={url}"
         ));
@@ -479,9 +488,10 @@ impl GoManager {
             });
         }
         let bytes = res.bytes().await?;
+        let archive_bytes = bytes.len() as u64;
         logging::debug(&format!(
-            "update: archive fetched target={version} bytes={} elapsed_ms={}",
-            bytes.len(),
+            "update: archive fetched target={version} bytes={archive_bytes} size=\"{}\" elapsed_ms={}",
+            GoVersion::format_size(archive_bytes),
             started_at.elapsed().as_millis()
         ));
 
@@ -492,53 +502,7 @@ impl GoManager {
 
         let bin_name = if cfg!(windows) { "govmr.exe" } else { "govmr" };
         let new_bin_path = temp_dir.join(bin_name);
-
-        // Extract the binary
-        if cfg!(windows) {
-            let mut archive = zip::ZipArchive::new(File::open(&archive_path)?)
-                .map_err(|e| GovmError::Extraction(e.to_string()))?;
-            for i in 0..archive.len() {
-                let mut file = archive
-                    .by_index(i)
-                    .map_err(|e| GovmError::Extraction(e.to_string()))?;
-                if file.name().ends_with(bin_name) {
-                    let mut out = File::create(&new_bin_path)?;
-                    std::io::copy(&mut file, &mut out)?;
-                    break;
-                }
-            }
-        } else {
-            let tar_gz = File::open(&archive_path)?;
-            let tar = flate2::read::GzDecoder::new(tar_gz);
-            let mut archive = tar::Archive::new(tar);
-            for entry in archive.entries()? {
-                let mut entry = entry?;
-                if entry.path()?.file_name().is_some_and(|n| n == bin_name) {
-                    entry.unpack(&new_bin_path)?;
-                    break;
-                }
-            }
-        }
-
-        // Replace the current executable
-        let current_exe = std::env::current_exe()?;
-        #[cfg(windows)]
-        {
-            // Windows locks running executables. Rename it, then copy the new one.
-            let old_exe = current_exe.with_extension("exe.old");
-            let _ = fs::rename(&current_exe, &old_exe);
-            fs::copy(&new_bin_path, &current_exe)?;
-        }
-        #[cfg(not(windows))]
-        {
-            fs::copy(&new_bin_path, &current_exe)?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-
-                fs::set_permissions(&current_exe, fs::Permissions::from_mode(0o755))?;
-            }
-        }
+        let current_exe = replace_current_binary(&new_bin_path)?;
 
         logging::info(&format!(
             "update: complete current={current} target={version} exe=\"{}\" elapsed_ms={}",
