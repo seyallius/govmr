@@ -408,6 +408,7 @@ impl GoManager {
     /// # Errors
     /// Returns [`GovmError`] if the release query or its response parsing fails.
     pub async fn check_for_update(&self) -> Result<Option<String>, GovmError> {
+        logging::debug("update check: started");
         let res = self
             .client
             .get("https://api.github.com/repos/seyallius/govmr/releases/latest")
@@ -415,10 +416,9 @@ impl GoManager {
             .send()
             .await?;
 
-        if res.status().as_u16() == 404 {
-            // An expected state (a repo that has not published a release yet),
-            // so it is a diagnostic, not something to tell the user about.
-            logging::debug("update check: status=404 note=no_public_releases");
+        let status = res.status();
+        if status.as_u16() == 404 {
+            logging::debug("update check: complete status=404 note=no_public_releases");
             return Ok(None);
         }
 
@@ -426,12 +426,19 @@ impl GoManager {
             .json()
             .await
             .map_err(|e| GovmError::Extraction(e.to_string()))?;
+
         let tag = json["tag_name"]
             .as_str()
             .unwrap_or("")
             .trim_start_matches('v');
-        let current = env!("CARGO_PKG_VERSION");
 
+        logging::debug(&format!(
+            "update check: complete status={} tag={}",
+            status,
+            if tag.is_empty() { "none" } else { tag }
+        ));
+
+        let current = env!("CARGO_PKG_VERSION");
         if !tag.is_empty() && tag != current {
             Ok(Some(tag.to_string()))
         } else {
@@ -453,7 +460,6 @@ impl GoManager {
         let arch = ARCH;
         let target = format!("{arch}-{os}");
         let ext = if cfg!(windows) { "zip" } else { "tar.gz" };
-
         let url = format!(
             "https://github.com/seyallius/govmr/releases/download/v{version}/govmr-v{version}-{target}.{ext}"
         );
@@ -463,6 +469,7 @@ impl GoManager {
             "update: downloading current={current} target={version} url={url}"
         ));
         let started_at = Instant::now();
+
         let res = self.client.get(&url).send().await?;
         let status = res.status();
         if !status.is_success() {
@@ -534,7 +541,7 @@ impl GoManager {
         }
 
         logging::info(&format!(
-            "update: replaced current={current} target={version} exe=\"{}\" elapsed_ms={}",
+            "update: complete current={current} target={version} exe=\"{}\" elapsed_ms={}",
             current_exe.display(),
             started_at.elapsed().as_millis()
         ));

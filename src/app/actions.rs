@@ -36,12 +36,7 @@ pub async fn handle_actions(
             Action::Install(v) => start_install(app, manager, action_tx, v),
             Action::InstallProgress(p) => app.update_install_progress(p),
             Action::InstallDone(v) => handle_install_done(app, manager, action_tx, &v),
-            Action::InstallFailed { version, message } => {
-                handle_install_failed(app, &version, &message);
-            }
-            Action::UpdateFailed { target, message } => {
-                handle_update_failed(app, &target, &message);
-            }
+            Action::InstallFailed(message) => handle_install_failed(app, &message),
             Action::Use(v) => handle_use(app, manager, &v),
             Action::Delete(v) => handle_delete(app, manager, action_tx, &v),
             Action::FixPath => handle_fix_path(app, manager),
@@ -137,10 +132,7 @@ fn start_install(
                 let _ = done_tx.send(Action::InstallDone(v));
             }
             Err(e) => {
-                let _ = done_tx.send(Action::InstallFailed {
-                    version: v.raw_version.clone(),
-                    message: e.to_string(),
-                });
+                let _ = done_tx.send(Action::InstallFailed(e.to_string()));
             }
         }
     });
@@ -199,12 +191,22 @@ fn handle_install_done(
 
 /// Clears the install busy state and reports a failed installation.
 ///
-/// This is the *only* place an install failure is logged: the manager layers
-/// return errors, and the handler that turns one into a user-visible message
-/// owns the audit line (with the version, which the message alone may not carry).
-fn handle_install_failed(app: &mut App, version: &str, message: &str) {
+/// This is the *only* place an install failure is logged. It extracts the
+/// target version from the `BusyState` before clearing it, avoiding the need
+/// to pass the version through the `Action` enum variant.
+fn handle_install_failed(app: &mut App, message: &str) {
+    // Extract version BEFORE clearing the busy state!
+    let version = app
+        .state
+        .busy
+        .as_ref()
+        .and_then(BusyState::target)
+        .unwrap_or("unknown")
+        .to_string();
+
     app.state.busy = None;
     app.state.cancel_install = None;
+
     if is_user_cancel(message) {
         logging::info(&format!(
             "install: cancelled version={version} note=user_abort"
@@ -217,19 +219,6 @@ fn handle_install_failed(app: &mut App, version: &str, message: &str) {
         ));
         app.set_status(format!("Installation failed: {message}"), MsgKind::Error);
     }
-}
-
-/// Reports a failed self-update under its own `update:` prefix.
-///
-/// Separate from [`handle_install_failed`] on purpose: an update failure used to
-/// be stamped `install failed: Update failed: ...`, which sent anyone reading the
-/// log looking at Go toolchain installs instead of at the running binary.
-fn handle_update_failed(app: &mut App, target: &str, message: &str) {
-    logging::error(&format!(
-        "update: failed target={target} error=\"{message}\"{}",
-        failure_hint(message)
-    ));
-    app.set_status(format!("Update failed: {message}"), MsgKind::Error);
 }
 
 /// Switches the active toolchain and updates local UI state immediately.
@@ -327,6 +316,7 @@ fn spawn_update(
     manager: &Arc<GoManager>,
     action_tx: &mpsc::UnboundedSender<Action>,
 ) {
+    logging::info("update: started target=latest");
     app.set_status("Checking for updates...", MsgKind::Info);
     let mgr = manager.clone();
     let tx = action_tx.clone();
@@ -335,10 +325,7 @@ fn spawn_update(
         match mgr.check_for_update().await {
             Ok(Some(ver)) => {
                 if let Err(e) = mgr.perform_update(&ver).await {
-                    let _ = tx.send(Action::UpdateFailed {
-                        target: ver.clone(),
-                        message: e.to_string(),
-                    });
+                    let _ = tx.send(Action::InstallFailed(format!("[UPDATE]{ver}|||{e}")));
                 } else {
                     let _ = tx.send(Action::UpdateDone(format!(
                         "Updated to v{ver}! Restart govmr to run it."
@@ -346,16 +333,12 @@ fn spawn_update(
                 }
             }
             Ok(None) => {
-                // Already up to date
                 let _ = tx.send(Action::UpdateDone(
                     "You are already on the latest version.".to_string(),
                 ));
             }
             Err(e) => {
-                let _ = tx.send(Action::UpdateFailed {
-                    target: "unknown".to_string(),
-                    message: e.to_string(),
-                });
+                let _ = tx.send(Action::InstallFailed(format!("[UPDATE]unknown|||{e}")));
             }
         }
     });
