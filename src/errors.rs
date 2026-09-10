@@ -4,7 +4,7 @@ use thiserror::Error;
 
 /// Comprehensive error enumeration for `GoVMR` application lifecycle and runtime failures.
 #[derive(Error, Debug)]
-pub enum GovmError {
+pub(crate) enum GovmError {
     /// Emitted when the user's home directory cannot be resolved from the environment.
     #[error("Home directory not found")]
     HomeNotFound,
@@ -16,6 +16,7 @@ pub enum GovmError {
     CannotDeleteActive(String),
     /// Emitted when no remote or local Go version matches the requested query.
     #[error("No Go version matching '{0}' found")]
+    #[allow(dead_code)]
     VersionNotFound(String),
     /// Emitted when an HTTP network request fails during manifest retrieval or binary download.
     #[error("HTTP error: {0}")]

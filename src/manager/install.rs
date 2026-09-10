@@ -14,7 +14,7 @@ use tokio::io::AsyncWriteExt;
 
 /// Lifecycle progress events emitted while a toolchain is being installed.
 #[derive(Debug, Clone, Copy)]
-pub enum InstallProgress {
+pub(crate) enum InstallProgress {
     /// A chunk of the archive finished downloading.
     Downloading {
         /// Number of bytes downloaded so far.
@@ -37,7 +37,7 @@ impl GoManager {
     ///
     /// # Errors
     /// Returns [`GovmError`] on download failure, IO interruption, or extraction error.
-    pub async fn download_and_install<F>(
+    pub(crate) async fn download_and_install<F>(
         &self,
         version: &GoVersion,
         progress: F,

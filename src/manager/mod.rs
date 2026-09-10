@@ -4,8 +4,9 @@ mod archive;
 mod install;
 mod update;
 
-pub use archive::check_archive_magic;
-pub use install::InstallProgress;
+#[cfg(test)]
+pub(crate) use archive::check_archive_magic;
+pub(crate) use install::InstallProgress;
 
 use crate::{
     completions, config,
@@ -15,7 +16,7 @@ use crate::{
     manager::update::replace_current_binary,
     shim::ShimManager,
     theme::{Theme, ThemeName},
-    version::{GoRelease, GoVersion, compare_versions},
+    version::{compare_versions, GoRelease, GoVersion},
 };
 use futures_util::StreamExt;
 use std::{
@@ -38,7 +39,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// Primary orchestrator managing installed toolchains, downloads, and version switching.
-pub struct GoManager {
+pub(crate) struct GoManager {
     /// Base configuration directory (`~/.govmr`).
     base_dir: PathBuf,
     /// Root directory storing extracted Go toolchains (`~/.govmr/versions`).
@@ -58,7 +59,7 @@ impl GoManager {
     ///
     /// # Errors
     /// Returns [`GovmError`] if directory creation or initialization fails.
-    pub fn new() -> Result<Self, GovmError> {
+    pub(crate) fn new() -> Result<Self, GovmError> {
         let home = dirs::home_dir().ok_or(GovmError::HomeNotFound)?;
         let base_dir = home.join(".govmr");
         let versions_dir = base_dir.join("versions");
@@ -82,12 +83,12 @@ impl GoManager {
     }
 
     /// Provides access to the underlying [`ShimManager`].
-    pub fn get_shim_manager(&self) -> &ShimManager {
+    pub(crate) fn get_shim_manager(&self) -> &ShimManager {
         &self.shim_mgr
     }
 
     /// Returns the user's currently selected color theme.
-    pub fn theme_name(&self) -> ThemeName {
+    pub(crate) fn theme_name(&self) -> ThemeName {
         // A poisoned lock only means another thread panicked mid-update; the
         // config value itself is still readable.
         self.config
@@ -97,7 +98,7 @@ impl GoManager {
     }
 
     /// Returns the concrete palette for the currently selected theme.
-    pub fn theme(&self) -> Theme {
+    pub(crate) fn theme(&self) -> Theme {
         Theme::for_name(self.theme_name())
     }
 
@@ -105,7 +106,7 @@ impl GoManager {
     ///
     /// # Errors
     /// Returns [`GovmError::Io`] if the updated configuration cannot be persisted.
-    pub fn set_theme(&self, theme: ThemeName) -> Result<Theme, GovmError> {
+    pub(crate) fn set_theme(&self, theme: ThemeName) -> Result<Theme, GovmError> {
         self.config
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -123,7 +124,7 @@ impl GoManager {
     /// Purely local (a single `readdir`), so it is cheap enough to call from the
     /// session bookend where the log needs the final installed state.
     #[must_use]
-    pub fn installed_versions(&self) -> Vec<String> {
+    pub(crate) fn installed_versions(&self) -> Vec<String> {
         let mut versions = Vec::new();
         if let Ok(entries) = fs::read_dir(&self.versions_dir) {
             for entry in entries.flatten() {
@@ -143,7 +144,7 @@ impl GoManager {
     }
 
     /// Retrieves the currently active Go version string from disk, if set.
-    pub fn get_active_version(&self) -> Option<String> {
+    pub(crate) fn get_active_version(&self) -> Option<String> {
         let active_file = self.base_dir.join("active_version");
         fs::read_to_string(active_file)
             .ok()
@@ -154,7 +155,7 @@ impl GoManager {
     ///
     /// # Errors
     /// Returns [`GovmError::Network`] if the request fails or [`GovmError::Io`] on filesystem read failure.
-    pub async fn fetch_versions(&self) -> Result<Vec<GoVersion>, GovmError> {
+    pub(crate) async fn fetch_versions(&self) -> Result<Vec<GoVersion>, GovmError> {
         let url = "https://go.dev/dl/?mode=json&include=all";
         // Which files we will accept is part of the request, so normalize the
         // host identity *before* fetching and log it: "why is 1.20.14 missing"
@@ -241,7 +242,7 @@ impl GoManager {
     /// # Errors
     /// Returns [`GovmError`] if shim generation or the active-version file
     /// write fails, or [`GovmError::NotInstalled`] if the version has no local path.
-    pub fn switch_version(&self, version: &GoVersion) -> Result<bool, GovmError> {
+    pub(crate) fn switch_version(&self, version: &GoVersion) -> Result<bool, GovmError> {
         // "Version X is not installed" is misleading unless the log says *where*
         // we looked, so a stale manifest entry can be told apart from a
         // genuinely missing toolchain directory.
@@ -278,7 +279,8 @@ impl GoManager {
     /// # Errors
     /// Returns [`GovmError::CannotDeleteActive`] if trying to delete the active version,
     /// or [`GovmError::NotInstalled`] if the version is not found locally.
-    pub fn delete_version(&self, version: &GoVersion) -> Result<(), GovmError> {
+    #[allow(clippy::unused_self)]
+    pub(crate) fn delete_version(&self, version: &GoVersion) -> Result<(), GovmError> {
         if !version.installed {
             return Err(GovmError::NotInstalled(version.raw_version.clone()));
         }
@@ -319,7 +321,7 @@ impl GoManager {
     /// # Errors
     /// Returns [`GovmError`] if the home dir cannot be resolved, the profile
     /// cannot be written, or the child process fails to spawn/run.
-    pub fn fix_path_permanently(&self) -> Result<Vec<String>, GovmError> {
+    pub(crate) fn fix_path_permanently(&self) -> Result<Vec<String>, GovmError> {
         let shim_dir = self.shim_mgr.get_shim_dir();
         let shim = shim_dir.to_string_lossy().to_string();
 
@@ -412,7 +414,7 @@ impl GoManager {
     ///
     /// # Errors
     /// Returns [`GovmError`] if the release query or its response parsing fails.
-    pub async fn check_for_update(&self) -> Result<Option<String>, GovmError> {
+    pub(crate) async fn check_for_update(&self) -> Result<Option<String>, GovmError> {
         logging::debug("update check: started");
         let res = self
             .client
@@ -458,7 +460,11 @@ impl GoManager {
     ///
     /// # Errors
     /// Returns [`GovmError`] if any download, archive-extraction, or file-replacement step fails.
-    pub async fn perform_update<F>(&self, version: &str, progress: F) -> Result<(), GovmError>
+    pub(crate) async fn perform_update<F>(
+        &self,
+        version: &str,
+        progress: F,
+    ) -> Result<(), GovmError>
     where
         F: Fn(InstallProgress) + Send + 'static,
     {
@@ -579,7 +585,7 @@ impl GoManager {
                 // Match if the file name is exactly the binary name, or if the path ends with it
                 // (handles nested structures like `govmr-v2.0.0/govmr` or `./govmr`)
                 let name_matches = path.file_name().is_some_and(|n| n == bin_name);
-                let path_matches = path.to_string_lossy().ends_with(&format!("/{}", bin_name))
+                let path_matches = path.to_string_lossy().ends_with(&format!("/{bin_name}"))
                     || path.to_string_lossy() == bin_name;
 
                 if (name_matches || path_matches) && !entry.header().entry_type().is_dir() {
@@ -592,8 +598,7 @@ impl GoManager {
 
         if !found {
             return Err(GovmError::Extraction(format!(
-                "binary '{}' not found in the downloaded archive. Check the release asset contents in ~/.govmr/govmr.log",
-                bin_name
+                "binary '{bin_name}' not found in the downloaded archive. Check the release asset contents in ~/.govmr/govmr.log"
             )));
         }
 
@@ -618,7 +623,8 @@ impl GoManager {
     /// # Errors
     /// Returns [`GovmError`] if the home directory cannot be found or any
     /// file-removal step fails.
-    pub fn uninstall(&self, purge: bool) -> Result<(), GovmError> {
+    #[allow(clippy::unused_self)]
+    pub(crate) fn uninstall(&self, purge: bool) -> Result<(), GovmError> {
         let exe = std::env::current_exe()?;
 
         // 1. Remove the binary FIRST.

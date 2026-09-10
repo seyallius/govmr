@@ -19,19 +19,19 @@ use std::os::unix::fs::PermissionsExt;
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// Manager responsible for generating executable shims and verifying environment PATH integrity.
-pub struct ShimManager {
+pub(crate) struct ShimManager {
     /// Directory where generated shims reside (`~/.govmr/shim`).
     shim_dir: PathBuf,
 }
 impl ShimManager {
-    // ----------------------------------------- Public API ----------------------------------------- //
+    // ------------------------------------- Public (crate) API ------------------------------------- //
 
     /// Creates a new `ShimManager`, ensuring the underlying shim directory exists.
     ///
     /// # Errors
     /// Returns [`GovmError::HomeNotFound`] if the user's home directory cannot be determined,
     /// or [`GovmError::Io`] if directory creation fails.
-    pub fn new() -> Result<Self, GovmError> {
+    pub(crate) fn new() -> Result<Self, GovmError> {
         let home = dirs::home_dir().ok_or(GovmError::HomeNotFound)?;
         let shim_dir = home.join(".govmr").join("shim");
         fs::create_dir_all(&shim_dir).map_err(|e| {
@@ -50,7 +50,7 @@ impl ShimManager {
 
     /// Returns a reference to the directory containing executable shims.
     #[must_use]
-    pub fn get_shim_dir(&self) -> &Path {
+    pub(crate) fn get_shim_dir(&self) -> &Path {
         &self.shim_dir
     }
 
@@ -60,7 +60,7 @@ impl ShimManager {
     /// "the shim exists but `go` still doesn't resolve" is exactly a `PATH`
     /// mismatch, and the two facts have to appear together to prove it.
     #[must_use]
-    pub fn is_in_path(&self) -> bool {
+    pub(crate) fn is_in_path(&self) -> bool {
         let in_path = path_contains_dir(&self.shim_dir);
         logging::debug(&format!(
             "shim: path check dir=\"{}\" in_path={in_path}",
@@ -76,7 +76,7 @@ impl ShimManager {
     ///
     /// # Errors
     /// Returns [`GovmError::Io`] if reading the directory or writing shims fails.
-    pub fn setup_shims_for_version(&self, bin_dir: &Path) -> Result<(), GovmError> {
+    pub(crate) fn setup_shims_for_version(&self, bin_dir: &Path) -> Result<(), GovmError> {
         let started_at = Instant::now();
 
         // Sweep out any stale shims before generating the fresh set.

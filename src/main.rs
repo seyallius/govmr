@@ -3,18 +3,31 @@
 //! Provides CLI and interactive TUI tooling to fetch, install, switch,
 //! and manage multiple Go toolchain versions seamlessly.
 
+mod app;
+mod cli;
+mod completions;
+mod config;
+mod errors;
+mod logging;
+mod manager;
+mod shim;
+mod theme;
+mod tui;
+mod version;
+
+#[cfg(test)]
+mod audit_trail;
+
+use crate::{
+    app::{Action, App},
+    cli::Cli,
+    manager::GoManager,
+};
 use clap::Parser;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-};
-use govmr::{
-    app::{self, Action, App},
-    cli::{self, Cli},
-    completions, config, logging,
-    manager::GoManager,
-    tui,
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::{
@@ -33,7 +46,7 @@ use tokio::sync::mpsc;
 async fn main() -> anyhow::Result<()> {
     // Argument parsing stays first: `--help`/`--version`/parse errors exit here
     // and must not open (or pollute) the audit log. Everything fallible that
-    // follows is covered by it, because logging is initialised before `GoManager::new()`.
+    // follows is covered by it, because logging is initialized before `GoManager::new()`.
     let cli_args = Cli::parse();
     logging::init();
     install_panic_hook();

@@ -54,7 +54,7 @@ const MAX_LOG_BYTES: u64 = 1024 * 1024;
 
 /// Severity of a log entry, rendered as a fixed-width tag.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Level {
+pub(crate) enum Level {
     /// Routine operational events (install started, switch, refresh ok…).
     Info,
     /// Unusual but non-fatal situations.
@@ -76,11 +76,11 @@ impl Level {
     }
 }
 
-// ----------------------------------------- Public API ----------------------------------------- //
+// ------------------------------------- Public (crate) API ------------------------------------- //
 
 /// Returns the default log file location: `~/.govmr/govmr.log`.
 #[must_use]
-pub fn default_log_path() -> Option<PathBuf> {
+pub(crate) fn default_log_path() -> Option<PathBuf> {
     dirs::home_dir().map(|home| home.join(".govmr").join("govmr.log"))
 }
 
@@ -89,7 +89,7 @@ pub fn default_log_path() -> Option<PathBuf> {
 /// Best-effort: yields an empty list when the log doesn't exist yet or can't
 /// be read, which the TUI log viewer renders as "no entries yet".
 #[must_use]
-pub fn read_lines() -> Vec<String> {
+pub(crate) fn read_lines() -> Vec<String> {
     let Some(path) = default_log_path() else {
         return Vec::new();
     };
@@ -102,7 +102,7 @@ pub fn read_lines() -> Vec<String> {
 ///
 /// Best-effort by design: if the home dir can't be resolved or the file can't be
 /// opened, logging simply stays disabled and the app runs unaffected.
-pub fn init() {
+pub(crate) fn init() {
     if let Some(path) = default_log_path() {
         init_in(&path);
     }
@@ -112,7 +112,7 @@ pub fn init() {
 ///
 /// First call wins: rotates an oversized existing log to `<path>.old`, then opens
 /// the file in append mode. Later calls are ignored.
-pub fn init_in(path: &Path) {
+pub(crate) fn init_in(path: &Path) {
     LOGGER.get_or_init(|| Mutex::new(open_log(path)));
 }
 
@@ -120,7 +120,7 @@ pub fn init_in(path: &Path) {
 ///
 /// `<path>` becomes `<path>.old` (overwriting any previous rotation). Files at or
 /// under `MAX_LOG_BYTES` are left untouched.
-pub fn rotate_if_oversized(path: &Path) {
+pub(crate) fn rotate_if_oversized(path: &Path) {
     if let Ok(meta) = fs::metadata(path)
         && meta.len() > MAX_LOG_BYTES
     {
@@ -133,7 +133,7 @@ pub fn rotate_if_oversized(path: &Path) {
 ///
 /// Never panics and swallows all IO failures: a logger must not take the app down
 /// with it. No-op when the logger was never (successfully) initialized.
-pub fn log(level: Level, message: &str) {
+pub(crate) fn log(level: Level, message: &str) {
     let Some(logger) = LOGGER.get() else { return };
     let Ok(mut guard) = logger.lock() else { return };
     let Some(file) = guard.as_mut() else { return };
@@ -148,8 +148,8 @@ pub fn log(level: Level, message: &str) {
 /// Public because anything that reasons *about* the trail — the TUI log panel's
 /// highlighting, the tests, a future `govmr logs --grep` — needs the message
 /// without re-parsing the framing.
-#[must_use]
-pub fn message_of(line: &str) -> &str {
+#[allow(dead_code)]
+pub(crate) fn message_of(line: &str) -> &str {
     let rest = line.get(TIMESTAMP_LEN..).unwrap_or(line);
     for tag in [
         Level::Info.tag(),
@@ -165,25 +165,26 @@ pub fn message_of(line: &str) -> &str {
 }
 
 /// Length of the `YYYY-MM-DD HH:MM:SSZ ` prefix that opens every line.
+#[allow(dead_code)]
 const TIMESTAMP_LEN: usize = 21;
 
 /// Logs a routine operational event.
-pub fn info(message: &str) {
+pub(crate) fn info(message: &str) {
     log(Level::Info, message);
 }
 
 /// Logs an unusual but non-fatal situation.
-pub fn warn(message: &str) {
+pub(crate) fn warn(message: &str) {
     log(Level::Warn, message);
 }
 
 /// Logs a failed operation.
-pub fn error(message: &str) {
+pub(crate) fn error(message: &str) {
     log(Level::Error, message);
 }
 
 /// Logs verbose diagnostics for debugging.
-pub fn debug(message: &str) {
+pub(crate) fn debug(message: &str) {
     log(Level::Debug, message);
 }
 
@@ -229,4 +230,82 @@ fn format_unix(total_secs: i64) -> String {
     let year = if month <= 2 { base_year + 1 } else { base_year };
 
     format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}Z")
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+    use std::{
+        path::PathBuf,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    /// Unique scratch directory per test (same pattern as tests/config.rs).
+    fn temp_dir() -> PathBuf {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!(
+            "govmr-log-test-{}-{}-{}",
+            std::process::id(),
+            n,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    // ----------------------------------------- Tests ----------------------------------------- //
+
+    #[test]
+    fn writes_timestamped_level_lines() {
+        let path = temp_dir().join("govmr.log");
+        init_in(&path); // first (and only) global init in this test binary
+        info("operation: install go1.22.0");
+        error("operation failed: invalid gzip header");
+
+        let raw = fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("INFO  operation: install go1.22.0"));
+        assert!(raw.contains("ERROR operation failed: invalid gzip header"));
+
+        // Timestamp shape: "YYYY-MM-DD HH:MM:SSZ "
+        let first = raw.lines().next().unwrap();
+        assert_eq!(&first[4..5], "-");
+        assert_eq!(&first[7..8], "-");
+        assert_eq!(&first[10..11], " ");
+        assert_eq!(&first[13..14], ":");
+        assert_eq!(first.get(19..20), Some("Z"));
+    }
+
+    #[test]
+    fn rotation_moves_oversized_log_aside() {
+        let dir = temp_dir();
+        let path = dir.join("govmr.log");
+        fs::write(&path, vec![b'x'; 1024 * 1024 + 1]).unwrap();
+
+        rotate_if_oversized(&path);
+
+        assert!(!path.exists(), "oversized log must be rotated away");
+        assert!(
+            dir.join("govmr.log.old").exists(),
+            "rotation target missing"
+        );
+    }
+
+    #[test]
+    fn rotation_leaves_small_logs_alone() {
+        let dir = temp_dir();
+        let path = dir.join("govmr.log");
+        std::fs::write(&path, "tiny log\n").unwrap();
+
+        rotate_if_oversized(&path);
+
+        assert!(path.exists(), "small logs must not rotate");
+    }
 }

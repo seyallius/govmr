@@ -7,7 +7,7 @@
 use super::GoVersion;
 use crate::logging;
 
-// ----------------------------------------- Public API ----------------------------------------- //
+// ------------------------------------- Public (crate) API ------------------------------------- //
 
 /// Splits a version-ish string into leading numeric components and an
 /// optional pre-release suffix.
@@ -16,7 +16,7 @@ use crate::logging;
 /// * `1.24rc1`  → `([1, 24], Some("rc1"))`
 /// * `1.21.beta2` → `([1, 21], Some("beta2"))`
 #[must_use]
-pub fn parse_version_query(raw: &str) -> (Vec<u64>, Option<String>) {
+pub(crate) fn parse_version_query(raw: &str) -> (Vec<u64>, Option<String>) {
     let mut nums = Vec::new();
     let mut tag = None;
     for part in raw.split('.') {
@@ -44,7 +44,7 @@ pub fn parse_version_query(raw: &str) -> (Vec<u64>, Option<String>) {
 /// * A pre-release suffix on the query (e.g. `rc1`) must match exactly.
 /// * When the query has no suffix, only stable releases are considered.
 #[must_use]
-pub fn version_matches(query_raw: &str, version_raw: &str) -> bool {
+pub(crate) fn version_matches(query_raw: &str, version_raw: &str) -> bool {
     let (q_nums, q_tag) = parse_version_query(query_raw);
     let (v_nums, v_tag) = parse_version_query(version_raw);
 
@@ -67,7 +67,7 @@ pub fn version_matches(query_raw: &str, version_raw: &str) -> bool {
 /// Exact matches win; otherwise the newest stable release matching the prefix
 /// is returned. Prerelease queries require an exact pre-release match.
 #[must_use]
-pub fn resolve_version<'a>(query: &str, versions: &'a [GoVersion]) -> Option<&'a GoVersion> {
+pub(crate) fn resolve_version<'a>(query: &str, versions: &'a [GoVersion]) -> Option<&'a GoVersion> {
     let clean = query.trim().trim_start_matches("go");
 
     // 1) Exact raw-version match always takes precedence.
@@ -122,7 +122,7 @@ fn log_resolution(query: &str, candidates: usize, matched: Option<(&GoVersion, &
 /// ignored), so `1.10.0` sorts after `1.9.0`. Mirrors the component rules of
 /// [`version_matches`] so sorting and matching stay consistent.
 #[must_use]
-pub fn compare_versions(v1: &str, v2: &str) -> std::cmp::Ordering {
+pub(crate) fn compare_versions(v1: &str, v2: &str) -> std::cmp::Ordering {
     let parse = |v: &str| -> Vec<u32> {
         v.split('.')
             .filter_map(|p| {
@@ -149,4 +149,82 @@ fn is_newer(candidate: &str, than: &str) -> bool {
         }
     }
     a.len() > b.len()
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    fn gv(raw: &str, stable: bool) -> GoVersion {
+        GoVersion {
+            raw_version: raw.to_string(),
+            display_name: format!("go{raw}"),
+            filename: format!("go{raw}.tar.gz"),
+            url: String::new(),
+            size: 0,
+            installed: false,
+            active: false,
+            path: None,
+            stable,
+        }
+    }
+
+    #[test]
+    fn component_prefixes_respect_boundaries() {
+        // "1.2" must match the 1.2 line but NOT 1.20 / 1.21 / 1.24.
+        assert!(version_matches("1.2", "1.2.0"));
+        assert!(version_matches("1.2", "1.2.7"));
+        assert!(!version_matches("1.2", "1.20.0"));
+        assert!(!version_matches("1.2", "1.21.6"));
+        assert!(!version_matches("1.2", "1.24rc1"));
+
+        // "1.20" matches the 1.20 line but not a hypothetical 1.200.
+        assert!(version_matches("1.20", "1.20.14"));
+        assert!(!version_matches("1.20", "1.200.0"));
+        assert!(!version_matches("1.20", "1.2.0"));
+    }
+
+    #[test]
+    fn prerelease_queries_require_exact_match() {
+        assert!(version_matches("1.24rc1", "1.24rc1"));
+        assert!(!version_matches("1.24rc1", "1.24.0"));
+        // Stable queries never resolve to prereleases.
+        assert!(!version_matches("1.24", "1.24rc1"));
+        assert!(version_matches("1.24", "1.24.0"));
+    }
+
+    #[test]
+    fn resolver_picks_newest_stable_for_prefix() {
+        // Ordered newest-first like fetch_versions returns.
+        let versions = vec![
+            gv("1.24.1", true),
+            gv("1.24.0", true),
+            gv("1.24rc1", false),
+            gv("1.23.4", true),
+            gv("1.22.6", true),
+        ];
+
+        let got = resolve_version("1.22", &versions).unwrap();
+        assert_eq!(got.raw_version, "1.22.6");
+
+        let got = resolve_version("1.24", &versions).unwrap();
+        assert_eq!(got.raw_version, "1.24.1", "stable beats rc, newest wins");
+
+        let got = resolve_version("1.24rc1", &versions).unwrap();
+        assert_eq!(got.raw_version, "1.24rc1");
+
+        assert!(
+            resolve_version("1.2", &versions).is_none(),
+            "no 1.2 line present"
+        );
+    }
+
+    #[test]
+    fn resolver_exact_match_wins() {
+        let versions = vec![gv("1.22.6", true), gv("1.22.0", true)];
+        let got = resolve_version("1.22.0", &versions).unwrap();
+        assert_eq!(got.raw_version, "1.22.0");
+    }
 }

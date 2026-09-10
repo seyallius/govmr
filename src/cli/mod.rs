@@ -20,15 +20,15 @@ use std::sync::Arc;
 /// CLI argument parser configuration for `GoVMR`.
 #[derive(Parser)]
 #[command(name = "govmr", about = "Go Version Manager in Rust", version)]
-pub struct Cli {
+pub(crate) struct Cli {
     /// Optional subcommand to execute. If omitted, launches the interactive TUI.
     #[command(subcommand)]
-    pub command: Option<Commands>,
+    pub(crate) command: Option<Commands>,
 }
 
 /// Available subcommands for command-line operations.
 #[derive(Subcommand)]
-pub enum Commands {
+pub(crate) enum Commands {
     /// Download and install a specified Go version.
     Install {
         /// Target version or prefix (e.g. "1.22", "1.21.6").
@@ -62,7 +62,7 @@ pub enum Commands {
     },
 }
 
-// ----------------------------------------- Public API ----------------------------------------- //
+// ------------------------------------- Public (crate) API ------------------------------------- //
 
 /// Dispatches execution based on the parsed CLI subcommand.
 ///
@@ -72,7 +72,7 @@ pub enum Commands {
 ///
 /// # Errors
 /// Returns [`anyhow::Error`] if requested versions cannot be resolved or operations fail.
-pub async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
+pub(crate) async fn handle_cli(cli: Cli, manager: Arc<GoManager>) -> Result<()> {
     match cli.command {
         Some(Commands::Install { version }) => cmd_install(&manager, &version).await?,
         Some(Commands::Use { version }) => cmd_use(&manager, &version).await?,

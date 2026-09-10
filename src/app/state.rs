@@ -11,7 +11,7 @@ use std::time::Instant;
 
 /// Identifies the currently active tab view in the TUI.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ActiveTab {
+pub(crate) enum ActiveTab {
     /// Browsing all official remote versions.
     Available,
     /// Browsing locally installed toolchains.
@@ -20,7 +20,7 @@ pub enum ActiveTab {
 impl ActiveTab {
     /// Flips to the other tab.
     #[must_use]
-    pub fn toggle(self) -> Self {
+    pub(crate) fn toggle(self) -> Self {
         match self {
             ActiveTab::Available => ActiveTab::Installed,
             ActiveTab::Installed => ActiveTab::Available,
@@ -30,7 +30,7 @@ impl ActiveTab {
 
 /// Severity of a transient status message.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum MsgKind {
+pub(crate) enum MsgKind {
     /// Positive confirmation.
     Success,
     /// Failure or destructive warning.
@@ -41,16 +41,16 @@ pub enum MsgKind {
 
 /// A transient status-bar message.
 #[derive(Clone)]
-pub struct StatusMessage {
+pub(crate) struct StatusMessage {
     /// Human-readable text.
-    pub text: String,
+    pub(crate) text: String,
     /// Visual severity.
-    pub kind: MsgKind,
+    pub(crate) kind: MsgKind,
 }
 
 /// Lifecycle phase of a running installation.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Phase {
+pub(crate) enum Phase {
     /// The archive is being downloaded.
     Downloading,
     /// The archive is being extracted to disk.
@@ -59,7 +59,7 @@ pub enum Phase {
 
 /// Background task state surfaced to the UI.
 #[derive(Clone)]
-pub enum BusyState {
+pub(crate) enum BusyState {
     /// Refreshing the version manifest from `go.dev`.
     Refreshing,
     /// Switching the active toolchain.
@@ -94,7 +94,7 @@ pub enum BusyState {
 impl BusyState {
     /// Returns the version targeted by the busy operation, if any.
     #[must_use]
-    pub fn target(&self) -> Option<&str> {
+    pub(crate) fn target(&self) -> Option<&str> {
         match self {
             BusyState::Refreshing => None,
             BusyState::Switching(v)
@@ -111,18 +111,18 @@ impl BusyState {
 /// at the folder level and `theme_cursor` only inside an open family, so a
 /// stale cursor can never leak across levels.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct ThemePickerState {
+pub(crate) struct ThemePickerState {
     /// Which level of the picker is currently rendered.
-    pub view: ThemePickerView,
+    pub(crate) view: ThemePickerView,
     /// Highlighted folder at the folder level (0 = Dark, 1 = Light).
-    pub family_cursor: usize,
+    pub(crate) family_cursor: usize,
     /// Highlighted theme inside the open family.
-    pub theme_cursor: usize,
+    pub(crate) theme_cursor: usize,
 }
 
 /// Tracks pending destructive/system actions requiring confirmation.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum SystemPrompt {
+pub(crate) enum SystemPrompt {
     /// Prompt the user to confirm downloading and applying the latest govmr update.
     Update,
     /// Prompt the user to confirm uninstalling the govmr binary while keeping `~/.govmr`.
@@ -136,90 +136,90 @@ pub enum SystemPrompt {
 /// Anchored to the physical file line count at the time it was created, so
 /// new log entries tail in *below* the separator rather than pushing it down.
 #[derive(Clone)]
-pub struct VisualAddition {
+pub(crate) struct VisualAddition {
     /// The text to render (e.g. a line of hyphens, or an empty string).
-    pub text: String,
+    pub(crate) text: String,
     /// The physical file line count when this addition was created.
-    pub anchor: usize,
+    pub(crate) anchor: usize,
 }
 
 /// Holds all state variables required for rendering and interacting with the TUI.
 /// A flat bag of independent UI toggles: they combine freely, so neither a
 /// state machine nor grouped bool enums would model them more accurately.
 #[allow(clippy::struct_excessive_bools)]
-pub struct AppState {
+pub(crate) struct AppState {
     /// Full list of available and installed versions.
-    pub versions: Vec<GoVersion>,
+    pub(crate) versions: Vec<GoVersion>,
     /// State container for the interactive version list widget.
-    pub list_state: ListState,
+    pub(crate) list_state: ListState,
     /// The currently selected tab view.
-    pub active_tab: ActiveTab,
+    pub(crate) active_tab: ActiveTab,
     /// Current background task, if any.
-    pub busy: Option<BusyState>,
+    pub(crate) busy: Option<BusyState>,
     /// Transient status-bar message.
-    pub status_message: Option<StatusMessage>,
+    pub(crate) status_message: Option<StatusMessage>,
     /// Targeted version pending user deletion confirmation.
-    pub confirming_delete: Option<String>,
+    pub(crate) confirming_delete: Option<String>,
     /// Indicates whether the `GoVMR` shim path is configured in system `PATH`.
-    pub is_shim_in_path: bool,
+    pub(crate) is_shim_in_path: bool,
     /// Filesystem path to the shim directory (shown in the help overlay).
-    pub shim_path: String,
+    pub(crate) shim_path: String,
     /// Live filter query applied to the current view.
-    pub filter: String,
+    pub(crate) filter: String,
     /// Whether the user is actively typing a filter query.
-    pub filter_mode: bool,
+    pub(crate) filter_mode: bool,
     /// Whether the PATH-setup help overlay is displayed.
-    pub show_help: bool,
+    pub(crate) show_help: bool,
     /// Whether the right-docked keyboard help panel is currently displayed.
-    pub show_command_help: bool,
+    pub(crate) show_command_help: bool,
     /// Vertical scroll offset (in content lines) of the keyboard help panel.
-    pub command_help_scroll: usize,
+    pub(crate) command_help_scroll: usize,
     /// Whether the color-theme picker overlay is displayed.
-    pub show_theme_picker: bool,
+    pub(crate) show_theme_picker: bool,
     /// Two-level theme-picker navigation (folder → theme) state.
-    pub theme_picker: ThemePickerState,
+    pub(crate) theme_picker: ThemePickerState,
     /// The active color palette (reloaded instantly when switching themes).
-    pub theme: Theme,
+    pub(crate) theme: Theme,
     /// Monotonic render counter used to drive spinner animations.
-    pub tick_count: u64,
+    pub(crate) tick_count: u64,
     /// Result feedback of the permanent PATH fix (`f` in the setup/help overlay),
     /// rendered *inside* the overlay so the user sees exactly what govmr did.
-    pub path_fix_notice: Option<Vec<Line<'static>>>,
+    pub(crate) path_fix_notice: Option<Vec<Line<'static>>>,
     /// Whether the operation-log viewer overlay is displayed.
-    pub show_logs: bool,
+    pub(crate) show_logs: bool,
     /// Cached log lines shown by the viewer (refreshed periodically while open).
-    pub log_lines: Vec<String>,
+    pub(crate) log_lines: Vec<String>,
     /// How far the viewer is scrolled up from the newest entry (0 = pinned to bottom).
-    pub log_scroll: usize,
+    pub(crate) log_scroll: usize,
     /// Whether the viewer auto-follows the newest log entries.
-    pub log_follow: bool,
+    pub(crate) log_follow: bool,
     /// When the log cache was last refreshed (used to throttle re-reads).
-    pub log_refreshed: Option<Instant>,
+    pub(crate) log_refreshed: Option<Instant>,
     /// Whether keyboard focus is currently on the docked log panel.
-    pub log_focus: bool,
+    pub(crate) log_focus: bool,
     /// Whether long log lines wrap instead of clipping at the panel edge.
-    pub log_wrap: bool,
+    pub(crate) log_wrap: bool,
     /// How many leading *physical* log lines a visual clear (`Ctrl+l`) hides.
     ///
     /// Behaves like clearing a terminal: lines written *after* the clear still
     /// tail into the panel, and closing/reopening resets the watermark so the
     /// full file is visible again. Replaces the boolean flag that hid the
     /// entire file until the panel was reopened.
-    pub log_visual_skip: usize,
+    pub(crate) log_visual_skip: usize,
     /// Visual additions (separators, blank lines) inserted into the log display.
     /// Each addition is anchored to the physical file line count at the time it
     /// was created, so new log entries tail in *below* the separator rather than
     /// pushing it down.
-    pub log_visual_additions: Vec<VisualAddition>,
+    pub(crate) log_visual_additions: Vec<VisualAddition>,
     /// Sender used to signal cancellation of an ongoing installation.
-    pub cancel_install: Option<tokio::sync::watch::Sender<bool>>,
+    pub(crate) cancel_install: Option<tokio::sync::watch::Sender<bool>>,
     /// Tracks which system-level confirmation modal (Update/Uninstall) is currently active.
-    pub system_prompt: Option<SystemPrompt>,
+    pub(crate) system_prompt: Option<SystemPrompt>,
 }
 impl AppState {
     /// Constructs a fresh state for the supplied version list (used by tests/setup).
-    #[must_use]
-    pub fn from_versions(versions: Vec<GoVersion>, is_shim_in_path: bool) -> Self {
+    #[allow(dead_code)]
+    pub(crate) fn from_versions(versions: Vec<GoVersion>, is_shim_in_path: bool) -> Self {
         let mut list_state = ListState::default();
         if !versions.is_empty() {
             list_state.select(Some(0));
@@ -260,12 +260,12 @@ impl AppState {
 
     /// Returns indices into `versions` visible under the current tab and filter.
     #[must_use]
-    pub fn visible_indices(&self) -> Vec<usize> {
+    pub(crate) fn visible_indices(&self) -> Vec<usize> {
         visible_indices(self)
     }
 
     /// Keeps the selection index within the bounds of the currently visible list.
-    pub fn clamp_selection(&mut self) {
+    pub(crate) fn clamp_selection(&mut self) {
         let len = self.visible_indices().len();
         match self.list_state.selected() {
             Some(i) if len > 0 && i >= len => self.list_state.select(Some(len - 1)),
@@ -275,7 +275,7 @@ impl AppState {
     }
 
     /// Moves the active selection cursor to the next visible item (wraps around).
-    pub fn next_item(&mut self) {
+    pub(crate) fn next_item(&mut self) {
         let len = self.visible_indices().len();
         if len == 0 {
             return;
@@ -288,7 +288,7 @@ impl AppState {
     }
 
     /// Moves the active selection cursor to the previous visible item (wraps around).
-    pub fn previous_item(&mut self) {
+    pub(crate) fn previous_item(&mut self) {
         let len = self.visible_indices().len();
         if len == 0 {
             return;
@@ -302,11 +302,11 @@ impl AppState {
     }
 }
 
-// ----------------------------------------- Public API ----------------------------------------- //
+// ------------------------------------- Public (crate) API ------------------------------------- //
 
 /// Returns indices into [`AppState::versions`] visible under the given state's tab and filter.
 #[must_use]
-pub fn visible_indices(state: &AppState) -> Vec<usize> {
+pub(crate) fn visible_indices(state: &AppState) -> Vec<usize> {
     let query = state.filter.to_lowercase();
     state
         .versions

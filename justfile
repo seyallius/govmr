@@ -32,6 +32,10 @@ build-windows-cross-v:
 treeclip dir="":
     treeclip run {{ dir }} -f -t -v -c --stats
 
+[group('Development')]
+docs:
+    cargo doc --no-deps --all-features
+
 # ------------------------------------------------------------------------------
 # Code Quality
 # ------------------------------------------------------------------------------

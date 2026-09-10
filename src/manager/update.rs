@@ -14,7 +14,7 @@ use std::{fs, path::Path};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-// ----------------------------------------- Public API ----------------------------------------- //
+// ------------------------------------- Public (crate) API ------------------------------------- //
 
 /// Atomically replaces the currently-running executable with `new_bin`.
 ///
@@ -24,7 +24,7 @@ use std::os::unix::fs::PermissionsExt;
 /// # Errors
 /// Returns [`GovmError::Io`] if the current executable path cannot be resolved,
 /// the sibling cannot be written, or the final rename fails.
-pub fn replace_current_binary(new_bin: &Path) -> Result<std::path::PathBuf, GovmError> {
+pub(crate) fn replace_current_binary(new_bin: &Path) -> Result<std::path::PathBuf, GovmError> {
     let current_exe = std::env::current_exe()?;
     replace_executable_platform(new_bin, &current_exe)
 }

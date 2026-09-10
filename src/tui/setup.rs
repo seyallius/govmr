@@ -13,7 +13,7 @@ use ratatui::{
 };
 use std::io;
 
-// ----------------------------------------- Public API ----------------------------------------- //
+// ------------------------------------- Public (crate) API ------------------------------------- //
 
 /// Checks if the shim directory is in `PATH` and presents an interactive setup guide if missing.
 ///
@@ -22,7 +22,7 @@ use std::io;
 ///
 /// # Errors
 /// Returns [`io::Error`] if terminal rendering or event polling fails.
-pub fn run_setup_guide_if_needed<B: Backend>(
+pub(crate) fn run_setup_guide_if_needed<B: Backend>(
     terminal: &mut Terminal<B>,
     shim_path: &str,
     shim_in_path: bool,
@@ -102,7 +102,7 @@ pub fn run_setup_guide_if_needed<B: Backend>(
 ///
 /// Shows only short one-liners; the permanent fix is applied by pressing `f`,
 /// and its result notice is rendered inside the overlay itself.
-pub fn draw_setup_modal(
+pub(crate) fn draw_setup_modal(
     frame: &mut Frame,
     screen: Rect,
     shim_path: &str,

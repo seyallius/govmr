@@ -12,7 +12,7 @@
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::expect_used)]
 
-use govmr::{
+use crate::{
     config::Config,
     logging,
     manager::check_archive_magic,
@@ -130,12 +130,12 @@ fn audit_trail_lets_a_reader_reconstruct_a_session() {
 
     // ---- 2. config load / migration / save -------------------------------- //
     let fresh = Config::load(&base);
-    assert_eq!(fresh.theme, govmr::theme::ThemeName::GoCyan);
+    assert_eq!(fresh.theme, crate::theme::ThemeName::GoCyan);
     let mut cfg = Config::load(&base);
-    cfg.set_theme(govmr::theme::ThemeName::Mono).expect("save");
+    cfg.set_theme(crate::theme::ThemeName::Mono).expect("save");
     let reloaded = Config::load(&base);
 
-    // A legacy plain-text config must be recognised, and the migration stated.
+    // A legacy plain-text config must be recognized, and the migration stated.
     let legacy_home = scratch("legacy");
     fs::create_dir_all(&legacy_home).expect("legacy base");
     fs::write(legacy_home.join("config"), "theme = cursordark\n").expect("legacy file");
@@ -162,13 +162,13 @@ fn audit_trail_lets_a_reader_reconstruct_a_session() {
             .any(|l| { l.starts_with("config: loaded ") && l.contains("source=config.toml") }),
         "a reload from the TOML file must say where the value came from"
     );
-    assert_eq!(reloaded.theme, govmr::theme::ThemeName::Mono);
+    assert_eq!(reloaded.theme, crate::theme::ThemeName::Mono);
     assert!(
         log.iter()
             .any(|l| l.starts_with("config: migrated legacy=") && l.contains("theme=cursordark")),
         "legacy migration must be logged, got:\n{log:#?}"
     );
-    assert_eq!(migrated.theme, govmr::theme::ThemeName::CursorDark);
+    assert_eq!(migrated.theme, crate::theme::ThemeName::CursorDark);
     assert!(
         log.iter().any(
             |l| l.starts_with("config: unknown theme value=\"not-a-theme\"")
@@ -176,7 +176,7 @@ fn audit_trail_lets_a_reader_reconstruct_a_session() {
         ),
         "an unknown theme key must be reported with the fallback used"
     );
-    assert_eq!(bogus.theme, govmr::theme::ThemeName::GoCyan);
+    assert_eq!(bogus.theme, crate::theme::ThemeName::GoCyan);
 
     // ---- 3. version resolution --------------------------------------------- //
     let versions = vec![
@@ -228,7 +228,7 @@ fn audit_trail_lets_a_reader_reconstruct_a_session() {
     let html: Vec<u8> = b"<html><body>404</body></html>".to_vec();
     let err = check_archive_magic(&html[..8], true, "https://dl.example/go.tar.gz")
         .expect_err("HTML must be rejected as a tar.gz");
-    assert!(matches!(err, govmr::errors::GovmError::NotAnArchive { .. }));
+    assert!(matches!(err, crate::errors::GovmError::NotAnArchive { .. }));
     // A real gzip head must pass, and pass *silently* (no error line).
     check_archive_magic(
         &[0x1f, 0x8b, 0x08, 0x00],

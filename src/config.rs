@@ -32,9 +32,9 @@ impl Default for ConfigFile {
 ///
 /// Unknown fields and a missing/absent file are tolerated (defaults are used),
 /// and a legacy plain-text `~/.govmr/config` is migrated on first load.
-pub struct Config {
+pub(crate) struct Config {
     /// The theme selected by the user.
-    pub theme: ThemeName,
+    pub(crate) theme: ThemeName,
     /// Path to the backing TOML file.
     path: std::path::PathBuf,
 }
@@ -46,7 +46,7 @@ impl Config {
     /// built-in defaults) is recorded, since "no config file" and "unparseable
     /// config file" look identical to the user but need different fixes.
     #[must_use]
-    pub fn load(base_dir: &std::path::Path) -> Self {
+    pub(crate) fn load(base_dir: &std::path::Path) -> Self {
         let path = base_dir.join("config.toml");
         let legacy = base_dir.join("config");
         let mut source = "defaults";
@@ -120,7 +120,7 @@ impl Config {
     /// # Errors
     /// Returns an IO error if the config cannot be serialized or the file
     /// cannot be written.
-    pub fn set_theme(&mut self, theme: ThemeName) -> std::io::Result<()> {
+    pub(crate) fn set_theme(&mut self, theme: ThemeName) -> std::io::Result<()> {
         self.theme = theme;
         let cfg = ConfigFile {
             theme: theme.key().to_string(),
@@ -148,11 +148,11 @@ impl Config {
     }
 }
 
-// ----------------------------------------- Public API ----------------------------------------- //
+// ------------------------------------- Public (crate) API ------------------------------------- //
 
 /// Returns the current cargo package version. If [`GOVMR_TEST_VERSION`]
 /// is configured in the path, it'll return that version.
-pub fn current_govmr_version() -> String {
+pub(crate) fn current_govmr_version() -> String {
     env::var(GOVMR_TEST_VERSION).unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string())
 }
 
@@ -169,4 +169,74 @@ fn parse_legacy_theme(contents: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+    use std::{
+        path::PathBuf,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_dir() -> PathBuf {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!(
+            "govmr-cfg-test-{}-{}-{}",
+            std::process::id(),
+            n,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn defaults_to_gocyan_when_absent() {
+        let dir = temp_dir();
+        let cfg = Config::load(&dir);
+        assert_eq!(cfg.theme, ThemeName::GoCyan);
+    }
+
+    #[test]
+    fn saves_and_reloads_theme_via_toml() {
+        let dir = temp_dir();
+        {
+            let mut cfg = Config::load(&dir);
+            cfg.set_theme(ThemeName::Nord).unwrap();
+        }
+        // The file must exist with a .toml extension and contain TOML.
+        let toml_path = dir.join("config.toml");
+        let raw = std::fs::read_to_string(&toml_path).unwrap();
+        assert!(raw.contains("theme"), "toml body: {raw}");
+        assert!(raw.contains("nord"), "toml body: {raw}");
+
+        // Reload picks it up.
+        let cfg = Config::load(&dir);
+        assert_eq!(cfg.theme, ThemeName::Nord);
+    }
+
+    #[test]
+    fn migrates_legacy_plain_text_config() {
+        let dir = temp_dir();
+        std::fs::write(dir.join("config"), "theme = midnight\n").unwrap();
+        let cfg = Config::load(&dir);
+        assert_eq!(cfg.theme, ThemeName::Midnight);
+    }
+
+    #[test]
+    fn corrupt_toml_falls_back_to_default() {
+        let dir = temp_dir();
+        std::fs::write(dir.join("config.toml"), "this is = = not valid toml [").unwrap();
+        let cfg = Config::load(&dir);
+        assert_eq!(cfg.theme, ThemeName::GoCyan);
+    }
 }

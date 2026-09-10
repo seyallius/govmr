@@ -23,7 +23,7 @@ use tokio::sync::mpsc;
 /// # Errors
 /// Always returns `Ok(())` today; individual action failures are reported to
 /// the user through the status bar instead of aborting the loop.
-pub async fn handle_actions(
+pub(crate) async fn handle_actions(
     action_rx: &mut mpsc::UnboundedReceiver<Action>,
     app: &mut App,
     manager: &Arc<GoManager>,

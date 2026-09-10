@@ -9,24 +9,24 @@ use serde::Deserialize;
 
 /// Represents a downloadable binary or source file listed in the official Go release manifest.
 #[derive(Debug, Clone, Deserialize)]
-pub struct ReleaseFile {
+pub(crate) struct ReleaseFile {
     /// The exact archive filename (e.g., `go1.22.0.linux-amd64.tar.gz`).
-    pub filename: String,
+    pub(crate) filename: String,
     /// The target operating system (e.g., `linux`, `darwin`, `windows`).
-    pub os: String,
+    pub(crate) os: String,
     /// The target system architecture (e.g., `amd64`, `arm64`).
-    pub arch: String,
+    pub(crate) arch: String,
     /// The size of the archive in bytes.
-    pub size: usize,
+    pub(crate) size: usize,
 }
 
 /// Represents a Go release object retrieved from the `go.dev` API manifest.
 #[derive(Debug, Clone, Deserialize)]
-pub struct GoRelease {
+pub(crate) struct GoRelease {
     /// The raw version string prefixed with 'go' (e.g., `go1.22.0`).
-    pub version: String,
+    pub(crate) version: String,
     /// Indicates whether this release is marked as stable.
-    pub stable: bool,
+    pub(crate) stable: bool,
     /// Collection of downloadable archive files available for this release.
-    pub files: Vec<ReleaseFile>,
+    pub(crate) files: Vec<ReleaseFile>,
 }

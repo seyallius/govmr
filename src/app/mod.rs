@@ -5,10 +5,10 @@ mod actions;
 mod keys;
 mod state;
 
-pub use action::Action;
-pub use actions::handle_actions;
-pub use keys::{KeyOutcome, handle_key};
-pub use state::{
+pub(crate) use action::Action;
+pub(crate) use actions::handle_actions;
+pub(crate) use keys::{KeyOutcome, handle_key};
+pub(crate) use state::{
     ActiveTab, AppState, BusyState, MsgKind, Phase, StatusMessage, SystemPrompt, ThemePickerState,
     VisualAddition, visible_indices,
 };
@@ -165,21 +165,21 @@ pub(crate) const COMMAND_REFERENCE: &[HelpEntry] = &[
 ];
 
 /// Main application controller holding application state and business logic references.
-pub struct App {
+pub(crate) struct App {
     /// Mutable UI state.
-    pub state: AppState,
+    pub(crate) state: AppState,
     /// Core Go manager handling version operations.
     manager: Arc<GoManager>,
 }
 impl App {
-    // ----------------------------------------- Public API ----------------------------------------- //
+    // ------------------------------------- Public (crate) API ------------------------------------- //
 
     /// Instantiates a new application controller, performing initial version manifest loading.
     ///
     /// The initial version fetch is dispatched via the `Action::Refresh`
     /// message in the main event loop, allowing the UI to render immediately
     /// and show a loading state while the network request proceeds.
-    pub fn new(manager: Arc<GoManager>, shim_path: String) -> Self {
+    pub(crate) fn new(manager: Arc<GoManager>, shim_path: String) -> Self {
         let is_in_path = manager.get_shim_manager().is_in_path();
         let current_theme = manager.theme_name();
 
@@ -224,7 +224,8 @@ impl App {
         since = "1.0.0",
         note = "This method is obsolete - version fetching is now handled by background tasks via handle_actions"
     )]
-    pub async fn refresh_versions(&mut self) {
+    #[allow(dead_code)]
+    pub(crate) async fn refresh_versions(&mut self) {
         self.state.busy = Some(BusyState::Refreshing);
         match self.manager.fetch_versions().await {
             Ok(versions) => {
@@ -240,7 +241,7 @@ impl App {
     }
 
     /// Records a transient status message.
-    pub fn set_status(&mut self, text: impl Into<String>, kind: MsgKind) {
+    pub(crate) fn set_status(&mut self, text: impl Into<String>, kind: MsgKind) {
         self.state.status_message = Some(StatusMessage {
             text: text.into(),
             kind,
@@ -249,33 +250,33 @@ impl App {
 
     /// Whether a background task is currently blocking new actions.
     #[must_use]
-    pub fn is_busy(&self) -> bool {
+    pub(crate) fn is_busy(&self) -> bool {
         self.state.busy.is_some()
     }
 
     /// Returns indices into [`AppState::versions`] visible under the current tab and filter.
     #[must_use]
-    pub fn visible_indices(&self) -> Vec<usize> {
+    pub(crate) fn visible_indices(&self) -> Vec<usize> {
         visible_indices(&self.state)
     }
 
     /// Returns the currently selected [`GoVersion`], honoring tab and filter visibility.
     #[must_use]
-    pub fn selected_version(&self) -> Option<&GoVersion> {
+    pub(crate) fn selected_version(&self) -> Option<&GoVersion> {
         let visible = self.visible_indices();
         let pos = self.state.list_state.selected()?;
         visible.get(pos).map(|&i| &self.state.versions[i])
     }
 
     /// Switches to the other tab and resets navigation.
-    pub fn switch_tab(&mut self) {
+    pub(crate) fn switch_tab(&mut self) {
         self.state.active_tab = self.state.active_tab.toggle();
         self.state.list_state.select(Some(0));
     }
 
     /// Opens the docked log panel *without* stealing keyboard focus, so the
     /// dashboard stays fully usable while logs tail live.
-    pub fn open_logs(&mut self) {
+    pub(crate) fn open_logs(&mut self) {
         self.state.show_logs = true;
         self.state.log_focus = false;
         self.state.log_follow = true;
@@ -287,7 +288,7 @@ impl App {
     }
 
     /// Closes the docked log panel and drops focus back to the dashboard.
-    pub fn close_logs(&mut self) {
+    pub(crate) fn close_logs(&mut self) {
         self.state.show_logs = false;
         self.state.log_focus = false;
         self.state.log_visual_skip = 0;
@@ -299,25 +300,25 @@ impl App {
     /// Terminal semantics: everything currently on screen disappears, but lines
     /// written *afterwards* still tail in. The watermark is the physical line
     /// count at clear time, so "new" is defined by the file, not by the UI.
-    pub fn clear_log_display(&mut self) {
+    pub(crate) fn clear_log_display(&mut self) {
         self.state.log_visual_skip = logging::read_lines().len();
         self.state.log_visual_additions.clear();
         self.refresh_logs();
     }
 
     /// Opens the right-docked keyboard help panel, resetting its scroll to the top.
-    pub fn open_command_help(&mut self) {
+    pub(crate) fn open_command_help(&mut self) {
         self.state.show_command_help = true;
         self.state.command_help_scroll = 0;
     }
 
     /// Closes the right-docked keyboard help panel.
-    pub fn close_command_help(&mut self) {
+    pub(crate) fn close_command_help(&mut self) {
         self.state.show_command_help = false;
     }
 
     /// Opens the help panel if it is closed, or closes it if it is open.
-    pub fn toggle_command_help(&mut self) {
+    pub(crate) fn toggle_command_help(&mut self) {
         if self.state.show_command_help {
             self.state.show_command_help = false;
         } else {
@@ -330,7 +331,7 @@ impl App {
     ///
     /// The offset is clamped to the panel's row budget so `g`/`G` can jump to
     /// either extreme without walking off the end of the catalogue.
-    pub fn scroll_command_help(&mut self, delta: i64) {
+    pub(crate) fn scroll_command_help(&mut self, delta: i64) {
         let max = COMMAND_REFERENCE.len().saturating_sub(1);
         // The i64 round-trip safely applies a signed delta; the clamp keeps the
         // result non-negative, so the final cast can never go wrong.
@@ -344,7 +345,7 @@ impl App {
     }
 
     /// Toggles word wrapping of long log lines (URLs, stack traces, …).
-    pub fn toggle_log_wrap(&mut self) {
+    pub(crate) fn toggle_log_wrap(&mut self) {
         self.state.log_wrap = !self.state.log_wrap;
     }
 
@@ -354,7 +355,7 @@ impl App {
     /// Blends the physical file (minus any cleared-away prefix) with transient
     /// visual additions (separators, blank lines), inserting each addition exactly
     /// at the file-line anchor it was created at.
-    pub fn refresh_logs(&mut self) {
+    pub(crate) fn refresh_logs(&mut self) {
         let file_lines = logging::read_lines();
 
         // Log rotation replaces the file with a much shorter one; a stale
@@ -400,7 +401,7 @@ impl App {
 
     /// Re-reads the log cache if the viewer is open and the throttle window
     /// has elapsed. Cheap no-op otherwise, so it is safe to call every tick.
-    pub fn refresh_logs_if_open(&mut self) {
+    pub(crate) fn refresh_logs_if_open(&mut self) {
         if !self.state.show_logs {
             return;
         }
@@ -415,7 +416,7 @@ impl App {
 
     /// Scrolls the log viewer by `delta` lines: positive moves up into older
     /// history, negative moves down toward newer entries.
-    pub fn scroll_logs(&mut self, delta: i64) {
+    pub(crate) fn scroll_logs(&mut self, delta: i64) {
         let max = self.state.log_lines.len().saturating_sub(1);
         // The i64 round-trip safely applies a signed delta; the clamp keeps
         // the result non-negative, so the final cast can never go wrong.
@@ -431,7 +432,7 @@ impl App {
     }
 
     /// Toggles auto-follow; re-enabling snaps back to the newest entry.
-    pub fn toggle_log_follow(&mut self) {
+    pub(crate) fn toggle_log_follow(&mut self) {
         self.state.log_follow = !self.state.log_follow;
         if self.state.log_follow {
             self.state.log_scroll = 0;
@@ -440,7 +441,7 @@ impl App {
 
     /// Opens the picker at the folder level, highlighting the folder that holds
     /// the persisted theme and previewing that theme live.
-    pub fn open_theme_picker(&mut self) {
+    pub(crate) fn open_theme_picker(&mut self) {
         self.state.show_theme_picker = true;
         let current = self.manager.theme_name();
         self.state.theme_picker = ThemePickerState {
@@ -454,7 +455,7 @@ impl App {
     /// The theme currently highlighted by the picker. Only meaningful while a
     /// family is open; at the folder level it reports the persisted theme.
     #[must_use]
-    pub fn picker_theme(&self) -> ThemeName {
+    pub(crate) fn picker_theme(&self) -> ThemeName {
         match self.state.theme_picker.view {
             ThemePickerView::Family(family) => ThemeName::in_family(family)
                 .get(self.state.theme_picker.theme_cursor)
@@ -473,7 +474,7 @@ impl App {
         clippy::cast_possible_wrap,
         clippy::cast_sign_loss
     )]
-    pub fn picker_move(&mut self, delta: i32) {
+    pub(crate) fn picker_move(&mut self, delta: i32) {
         match self.state.theme_picker.view {
             ThemePickerView::Categories => {
                 let len = ThemeFamily::ALL.len() as i32;
@@ -508,7 +509,7 @@ impl App {
 
     /// Dives into the highlighted folder, or saves the highlighted theme when a
     /// folder is already open (Enter does double duty, like a file manager).
-    pub fn picker_enter(&mut self) {
+    pub(crate) fn picker_enter(&mut self) {
         match self.state.theme_picker.view {
             ThemePickerView::Categories => {
                 let family = ThemeFamily::at(self.state.theme_picker.family_cursor);
@@ -531,7 +532,7 @@ impl App {
     }
 
     /// Steps up one level (family → folders) and restores the saved-theme preview.
-    pub fn picker_back(&mut self) {
+    pub(crate) fn picker_back(&mut self) {
         if let ThemePickerView::Family(_) = self.state.theme_picker.view {
             self.state.theme_picker.view = ThemePickerView::Categories;
             self.state.theme = self.manager.theme();
@@ -540,7 +541,7 @@ impl App {
 
     /// Persists the highlighted theme and closes the picker. No-op unless a
     /// family is open (Enter at the folder level dives in instead).
-    pub fn picker_apply(&mut self) {
+    pub(crate) fn picker_apply(&mut self) {
         if !matches!(self.state.theme_picker.view, ThemePickerView::Family(_)) {
             return;
         }
@@ -562,29 +563,29 @@ impl App {
     }
 
     /// Closes the picker and restores the persisted theme (discards any preview).
-    pub fn picker_cancel(&mut self) {
+    pub(crate) fn picker_cancel(&mut self) {
         self.state.show_theme_picker = false;
         self.state.theme_picker.view = ThemePickerView::Categories;
         self.state.theme = self.manager.theme();
     }
 
     /// Keeps the selection index within the bounds of the currently visible list.
-    pub fn clamp_selection(&mut self) {
+    pub(crate) fn clamp_selection(&mut self) {
         self.state.clamp_selection();
     }
 
     /// Moves the active selection cursor to the next visible item.
-    pub fn next_item(&mut self) {
+    pub(crate) fn next_item(&mut self) {
         self.state.next_item();
     }
 
     /// Moves the active selection cursor to the previous visible item.
-    pub fn previous_item(&mut self) {
+    pub(crate) fn previous_item(&mut self) {
         self.state.previous_item();
     }
 
     /// Applies a [`InstallProgress`] event to the active installation state.
-    pub fn update_install_progress(&mut self, progress: InstallProgress) {
+    pub(crate) fn update_install_progress(&mut self, progress: InstallProgress) {
         if let Some(BusyState::Installing {
             version,
             phase: _,
@@ -624,7 +625,7 @@ impl App {
     }
 
     /// Applies a [`InstallProgress`] event to the active self-update state.
-    pub fn update_update_progress(&mut self, progress: InstallProgress) {
+    pub(crate) fn update_update_progress(&mut self, progress: InstallProgress) {
         if let Some(BusyState::Updating {
             version,
             phase: _,

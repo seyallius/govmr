@@ -14,7 +14,7 @@ use std::fmt;
 /// Ordered dark-first, light-after so the picker can group them into two
 /// contiguous [`ThemeFamily`] sections.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum ThemeName {
+pub(crate) enum ThemeName {
     /// The default Go-brand cyan look.
     #[default]
     GoCyan,
@@ -59,7 +59,7 @@ pub enum ThemeName {
 }
 impl ThemeName {
     /// Every available theme, in display order (dark schemes first).
-    pub const ALL: [ThemeName; 19] = [
+    pub(crate) const ALL: [ThemeName; 19] = [
         ThemeName::GoCyan,
         ThemeName::JetBrainsNewIsland,
         ThemeName::CursorDark,
@@ -83,7 +83,7 @@ impl ThemeName {
 
     /// Short identifier used in the config file and the CLI.
     #[must_use]
-    pub fn key(self) -> &'static str {
+    pub(crate) fn key(self) -> &'static str {
         match self {
             ThemeName::GoCyan => "gocyan",
             ThemeName::JetBrainsNewIsland => "newisland",
@@ -109,7 +109,7 @@ impl ThemeName {
 
     /// Human-friendly display name.
     #[must_use]
-    pub fn title(self) -> &'static str {
+    pub(crate) fn title(self) -> &'static str {
         match self {
             ThemeName::GoCyan => "Go Cyan",
             ThemeName::JetBrainsNewIsland => "JetBrains New Island",
@@ -135,7 +135,7 @@ impl ThemeName {
 
     /// Parses a config/CLI key back into a [`ThemeName`] (case-insensitive).
     #[must_use]
-    pub fn from_key(raw: &str) -> Option<ThemeName> {
+    pub(crate) fn from_key(raw: &str) -> Option<ThemeName> {
         let key = raw.trim().to_lowercase();
         Self::ALL
             .iter()
@@ -148,7 +148,7 @@ impl ThemeName {
     /// This is the authoritative grouping source; [`Theme::is_light`] performs
     /// the same check against the concrete palette as a sanity net.
     #[must_use]
-    pub fn is_light(self) -> bool {
+    pub(crate) fn is_light(self) -> bool {
         matches!(
             self,
             ThemeName::CursorLight
@@ -161,14 +161,14 @@ impl ThemeName {
     }
 
     /// Whether this theme paints a dim background.
-    #[must_use]
-    pub fn is_dark(self) -> bool {
+    #[allow(dead_code)]
+    pub(crate) fn is_dark(self) -> bool {
         !self.is_light()
     }
 
     /// The brightness family this theme belongs to.
     #[must_use]
-    pub fn family(self) -> ThemeFamily {
+    pub(crate) fn family(self) -> ThemeFamily {
         if self.is_light() {
             ThemeFamily::Light
         } else {
@@ -178,7 +178,7 @@ impl ThemeName {
 
     /// All themes belonging to `family`, preserving [`ThemeName::ALL`] order.
     #[must_use]
-    pub fn in_family(family: ThemeFamily) -> Vec<ThemeName> {
+    pub(crate) fn in_family(family: ThemeFamily) -> Vec<ThemeName> {
         Self::ALL
             .iter()
             .copied()
@@ -188,7 +188,7 @@ impl ThemeName {
 
     /// Index of this theme within its own family's ordered list.
     #[must_use]
-    pub fn index_in_family(self) -> usize {
+    pub(crate) fn index_in_family(self) -> usize {
         Self::in_family(self.family())
             .iter()
             .position(|t| *t == self)
@@ -216,7 +216,7 @@ impl clap::ValueEnum for ThemeName {
 
 /// Coarse brightness family a theme belongs to, used to group the picker.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ThemeFamily {
+pub(crate) enum ThemeFamily {
     /// Dim-background schemes.
     Dark,
     /// Bright-background schemes.
@@ -224,11 +224,11 @@ pub enum ThemeFamily {
 }
 impl ThemeFamily {
     /// Every family in display order (dark first).
-    pub const ALL: [ThemeFamily; 2] = [ThemeFamily::Dark, ThemeFamily::Light];
+    pub(crate) const ALL: [ThemeFamily; 2] = [ThemeFamily::Dark, ThemeFamily::Light];
 
     /// Human-friendly section label.
     #[must_use]
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             ThemeFamily::Dark => "Dark",
             ThemeFamily::Light => "Light",
@@ -237,7 +237,7 @@ impl ThemeFamily {
 
     /// Small glyph shown next to the section header.
     #[must_use]
-    pub fn icon(self) -> &'static str {
+    pub(crate) fn icon(self) -> &'static str {
         match self {
             ThemeFamily::Dark => "🌙",
             ThemeFamily::Light => "☀️",
@@ -246,13 +246,13 @@ impl ThemeFamily {
 
     /// Position of this family within [`ThemeFamily::ALL`] (0 = Dark, 1 = Light).
     #[must_use]
-    pub fn index(self) -> usize {
+    pub(crate) fn index(self) -> usize {
         Self::ALL.iter().position(|f| *f == self).unwrap_or(0)
     }
 
     /// The family at position `i`, clamped to a valid index.
     #[must_use]
-    pub fn at(i: usize) -> ThemeFamily {
+    pub(crate) fn at(i: usize) -> ThemeFamily {
         Self::ALL[i.min(Self::ALL.len() - 1)]
     }
 }
@@ -264,7 +264,7 @@ impl ThemeFamily {
 /// keeps the key handler free of boolean flags and makes illegal states
 /// (e.g. "a theme is highlighted but no folder is open") unrepresentable.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum ThemePickerView {
+pub(crate) enum ThemePickerView {
     /// Choosing between the Dark / Light folders.
     #[default]
     Categories,
@@ -274,34 +274,34 @@ pub enum ThemePickerView {
 
 /// A concrete palette plus derived widget styles.
 #[derive(Clone, Copy)]
-pub struct Theme {
+pub(crate) struct Theme {
     /// Primary brand / accent color (borders, highlights, key hints).
-    pub brand: Color,
+    pub(crate) brand: Color,
     /// Darker shade of the brand, used for selection/gauge backgrounds.
-    pub brand_dark: Color,
+    pub(crate) brand_dark: Color,
     /// Success / active color.
-    pub success: Color,
+    pub(crate) success: Color,
     /// Error / destructive color.
-    pub error: Color,
+    pub(crate) error: Color,
     /// Warning / caution color.
-    pub warning: Color,
+    pub(crate) warning: Color,
     /// Secondary accent for badges.
-    pub accent: Color,
+    pub(crate) accent: Color,
     /// Dimmed text and inactive elements.
-    pub grey: Color,
+    pub(crate) grey: Color,
     /// Primary foreground text color.
-    pub fg: Color,
+    pub(crate) fg: Color,
     /// Screen background fill.
-    pub bg: Color,
+    pub(crate) bg: Color,
     /// Quiet chrome color (unfocused panel borders, dividers, tab underline).
     /// Sits between `bg` and `gray` so inactive chrome recedes without vanishing.
-    pub dim: Color,
+    pub(crate) dim: Color,
 }
 impl Theme {
     /// Builds the palette for the named scheme.
     #[must_use]
     #[allow(clippy::too_many_lines)]
-    pub fn for_name(name: ThemeName) -> Theme {
+    pub(crate) fn for_name(name: ThemeName) -> Theme {
         match name {
             ThemeName::GoCyan => Theme {
                 brand: Color::Rgb(0, 173, 216),
@@ -535,8 +535,8 @@ impl Theme {
     }
 
     /// Whether this is a light (bright-background) scheme.
-    #[must_use]
-    pub fn is_light(&self) -> bool {
+    #[allow(dead_code)]
+    pub(crate) fn is_light(&self) -> bool {
         matches!(self.bg, Color::Rgb(r, _, _) if r > 200)
     }
 
@@ -544,55 +544,55 @@ impl Theme {
 
     /// Style for focused highlights and secondary brand indicators.
     #[must_use]
-    pub fn highlight(&self) -> Style {
+    pub(crate) fn highlight(&self) -> Style {
         Style::default().fg(self.brand)
     }
 
     /// Style for success banners, active markers, and positive feedback.
     #[must_use]
-    pub fn success(&self) -> Style {
+    pub(crate) fn success(&self) -> Style {
         Style::default().fg(self.success)
     }
 
     /// Style for error messages, failure alerts, and destructive actions.
     #[must_use]
-    pub fn error(&self) -> Style {
+    pub(crate) fn error(&self) -> Style {
         Style::default().fg(self.error)
     }
 
     /// Style for warning banners and non-fatal notifications.
     #[must_use]
-    pub fn warning(&self) -> Style {
+    pub(crate) fn warning(&self) -> Style {
         Style::default().fg(self.warning)
     }
 
     /// Style for primary headers and dialog titles.
     #[must_use]
-    pub fn title(&self) -> Style {
+    pub(crate) fn title(&self) -> Style {
         Style::default().fg(self.brand).add_modifier(Modifier::BOLD)
     }
 
     /// Style for primary container borders.
     #[must_use]
-    pub fn border(&self) -> Style {
+    pub(crate) fn border(&self) -> Style {
         Style::default().fg(self.brand)
     }
 
     /// Style for subtle hints, borders, and footer shortcuts.
     #[must_use]
-    pub fn muted(&self) -> Style {
+    pub(crate) fn muted(&self) -> Style {
         Style::default().fg(self.grey)
     }
 
     /// Style for brand-colored bold text.
     #[must_use]
-    pub fn brand_bold(&self) -> Style {
+    pub(crate) fn brand_bold(&self) -> Style {
         Style::default().fg(self.brand).add_modifier(Modifier::BOLD)
     }
 
     /// Style for the currently selected list row (inverted brand block).
     #[must_use]
-    pub fn selected_row(&self) -> Style {
+    pub(crate) fn selected_row(&self) -> Style {
         Style::default()
             .fg(self.fg)
             .bg(self.brand_dark)
@@ -601,7 +601,7 @@ impl Theme {
 
     /// Style for pre-release / unstable version badges.
     #[must_use]
-    pub fn badge_unstable(&self) -> Style {
+    pub(crate) fn badge_unstable(&self) -> Style {
         Style::default()
             .fg(self.warning)
             .add_modifier(Modifier::BOLD)
@@ -609,45 +609,45 @@ impl Theme {
 
     /// Style for the "(installed)" badge.
     #[must_use]
-    pub fn badge_installed(&self) -> Style {
+    pub(crate) fn badge_installed(&self) -> Style {
         Style::default().fg(self.accent)
     }
 
     /// Style for the "(active)" badge.
     #[must_use]
-    pub fn badge_active(&self) -> Style {
+    pub(crate) fn badge_active(&self) -> Style {
         Style::default()
             .fg(self.success)
             .add_modifier(Modifier::BOLD)
     }
 
     /// Style for an inactive tab title.
-    #[must_use]
-    pub fn tab_inactive(&self) -> Style {
+    #[allow(dead_code)]
+    pub(crate) fn tab_inactive(&self) -> Style {
         Style::default().fg(self.grey)
     }
 
     /// Style for an active tab title.
-    #[must_use]
-    pub fn tab_active(&self) -> Style {
+    #[allow(dead_code)]
+    pub(crate) fn tab_active(&self) -> Style {
         Style::default().fg(self.brand).add_modifier(Modifier::BOLD)
     }
 
     /// Style for key hints in the help footer.
     #[must_use]
-    pub fn key_hint(&self) -> Style {
+    pub(crate) fn key_hint(&self) -> Style {
         Style::default().fg(self.brand).add_modifier(Modifier::BOLD)
     }
 
     /// Style for dim descriptive text inside modals.
     #[must_use]
-    pub fn modal_body(&self) -> Style {
+    pub(crate) fn modal_body(&self) -> Style {
         Style::default().fg(self.fg)
     }
 
     /// Style for quiet chrome: unfocused borders, dividers, the tab underline.
     #[must_use]
-    pub fn dim_border(&self) -> Style {
+    pub(crate) fn dim_border(&self) -> Style {
         Style::default().fg(self.dim)
     }
 }

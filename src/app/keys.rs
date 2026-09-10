@@ -16,14 +16,14 @@ use tokio::sync::mpsc::UnboundedSender;
 // ------------------------------------------ Types & Impls ------------------------------------- //
 
 /// How the event loop should proceed after a key has been handled.
-pub enum KeyOutcome {
+pub(crate) enum KeyOutcome {
     /// Keep the event loop running.
     Continue,
     /// Quit the application.
     Quit,
 }
 
-// ----------------------------------------- Public API ----------------------------------------- //
+// ------------------------------------- Public (crate) API ------------------------------------- //
 
 /// Applies one terminal key event to the application, returning how the event
 /// loop should proceed.
@@ -31,7 +31,11 @@ pub enum KeyOutcome {
 /// Release/repeat artifacts are ignored, universal `Ctrl-C` quits bypass every
 /// modal, and any other key is routed through the active modal (help, theme
 /// picker, delete confirmation, filter) before reaching the main shortcuts.
-pub fn handle_key(key: KeyEvent, app: &mut App, action_tx: &UnboundedSender<Action>) -> KeyOutcome {
+pub(crate) fn handle_key(
+    key: KeyEvent,
+    app: &mut App,
+    action_tx: &UnboundedSender<Action>,
+) -> KeyOutcome {
     // Only react on key press (not release artifacts).
     if key.kind == KeyEventKind::Release {
         return KeyOutcome::Continue;

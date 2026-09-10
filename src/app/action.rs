@@ -7,7 +7,7 @@
 use crate::{manager::InstallProgress, version::GoVersion};
 
 /// Actions dispatched asynchronously to execute backend operations.
-pub enum Action {
+pub(crate) enum Action {
     /// Reload remote version list from `go.dev`.
     Refresh,
     /// Finished reloading remote version list.

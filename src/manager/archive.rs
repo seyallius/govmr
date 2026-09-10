@@ -37,7 +37,7 @@ impl ExtractStats {
     }
 }
 
-// ----------------------------------------- Public API ----------------------------------------- //
+// ------------------------------------- Public (crate) API ------------------------------------- //
 
 /// Validates that a downloaded payload starts with the expected archive magic.
 ///
@@ -52,7 +52,7 @@ impl ExtractStats {
 /// # Errors
 /// Returns [`GovmError::NotAnArchive`] when the payload does not start with
 /// the expected magic bytes.
-pub fn check_archive_magic(head: &[u8], is_tar: bool, url: &str) -> Result<(), GovmError> {
+pub(crate) fn check_archive_magic(head: &[u8], is_tar: bool, url: &str) -> Result<(), GovmError> {
     let magic: &[u8] = if is_tar { &[0x1f, 0x8b] } else { &[0x50, 0x4b] };
     if head.len() >= 2 && &head[..2] == magic {
         return Ok(());
@@ -335,5 +335,32 @@ mod tests {
             check_archive_magic(&[], true, "https://x/y.tar.gz").is_err(),
             "an empty head cannot be validated"
         );
+    }
+
+    #[test]
+    fn accepts_gzip_and_zip_magic() {
+        assert!(check_archive_magic(&[0x1f, 0x8b, 0x08, 0x00], true, "u").is_ok());
+        assert!(check_archive_magic(&[0x50, 0x4b, 0x03, 0x04], false, "u").is_ok());
+    }
+
+    #[test]
+    fn rejects_html_payload_like_the_incident() {
+        // The exact bytes from the 2026-08-31 govmr.log forensics.
+        let html = b"\n<!DOCTYPE html>\n<html>";
+        let err = check_archive_magic(html, true, "https://go.dev/dl/x.tar.gz").unwrap_err();
+        match err {
+            GovmError::NotAnArchive { kind, head, url } => {
+                assert_eq!(kind, "tar.gz");
+                assert!(head.starts_with("0a 3c"), "hex head: {head}");
+                assert!(url.contains("go.dev"));
+            }
+            other => panic!("wrong variant: {other}"),
+        }
+    }
+
+    #[test]
+    fn rejects_truncated_or_empty_payload() {
+        assert!(check_archive_magic(&[0x1f], true, "u").is_err());
+        assert!(check_archive_magic(&[], false, "u").is_err());
     }
 }

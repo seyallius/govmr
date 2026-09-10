@@ -28,7 +28,7 @@ struct CompletionTarget {
     link_path: PathBuf,
 }
 
-// ----------------------------------------- Public API ----------------------------------------- //
+// ------------------------------------- Public (crate) API ------------------------------------- //
 
 /// Ensures shell completions are generated, current, and linked into the
 /// shell's discovery directory.
@@ -41,7 +41,7 @@ struct CompletionTarget {
 ///
 /// Called once at startup from `main()`. Safe to call repeatedly: unchanged
 /// completions produce only debug-level log noise.
-pub fn ensure_completions() {
+pub(crate) fn ensure_completions() {
     logging::debug("completions: check started");
 
     let targets = detect_shell_targets();
@@ -116,7 +116,7 @@ pub fn ensure_completions() {
 ///
 /// Called during uninstall so no orphaned completion files survive, regardless
 /// of whether the user chose to purge `~/.govmr`.
-pub fn remove_completions() {
+pub(crate) fn remove_completions() {
     logging::debug("completions: removal started");
 
     for target in &all_possible_targets() {
