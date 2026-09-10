@@ -25,7 +25,7 @@ use std::{
         consts::{ARCH, OS},
     },
     fs::{self, File},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -55,6 +55,8 @@ pub(crate) struct GoManager {
     client: reqwest::Client,
 }
 impl GoManager {
+    // ------------------------------------- Public (crate) API ------------------------------------- //
+
     /// Initializes a new instance of `GoManager`, creating required directories if missing.
     ///
     /// # Errors
@@ -487,56 +489,7 @@ impl GoManager {
         ));
         let started_at = Instant::now();
 
-        let res = self.client.get(&url).send().await?;
-        let status = res.status();
-        if !status.is_success() {
-            return Err(GovmError::HttpStatus {
-                status: status.as_u16(),
-                url: res.url().to_string(),
-            });
-        }
-
-        let total_size = res.content_length().unwrap_or(0);
-        let mut downloaded: u64 = 0;
-        let mut stream = res.bytes_stream();
-
-        let mut last_report = Instant::now();
-        let mut last_bytes: u64 = 0;
-        let mut smoothed_speed: f64 = 0.0;
-        let mut bytes_buf = Vec::new();
-
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            bytes_buf.extend_from_slice(&chunk);
-            downloaded += chunk.len() as u64;
-
-            let now = Instant::now();
-            let elapsed = now.duration_since(last_report).as_secs_f64();
-            if elapsed >= 0.25 || total_size == 0 {
-                #[allow(clippy::cast_precision_loss)]
-                let instant_speed = (downloaded - last_bytes) as f64 / elapsed.max(1e-3);
-                smoothed_speed = if smoothed_speed == 0.0 {
-                    instant_speed
-                } else {
-                    smoothed_speed * 0.6 + instant_speed * 0.4
-                };
-
-                progress(InstallProgress::Downloading {
-                    downloaded,
-                    total: total_size,
-                    bytes_per_sec: smoothed_speed,
-                });
-                last_report = now;
-                last_bytes = downloaded;
-            }
-        }
-
-        progress(InstallProgress::Downloading {
-            downloaded,
-            total: total_size,
-            bytes_per_sec: smoothed_speed,
-        });
-        progress(InstallProgress::Extracting);
+        let bytes_buf = self.stream_update_archive(&url, &progress).await?;
 
         logging::debug(&format!(
             "update: archive fetched target={version} size={} ({} bytes) elapsed_time={}s",
@@ -552,58 +505,13 @@ impl GoManager {
 
         let bin_name = if cfg!(windows) { "govmr.exe" } else { "govmr" };
         let new_bin_path = temp_dir.join(bin_name);
-        let mut found = false;
 
-        // Extract the binary with forensic logging
-        if cfg!(windows) {
-            let mut archive = zip::ZipArchive::new(File::open(&archive_path)?)
-                .map_err(|e| GovmError::Extraction(e.to_string()))?;
-            for i in 0..archive.len() {
-                let mut file = archive
-                    .by_index(i)
-                    .map_err(|e| GovmError::Extraction(e.to_string()))?;
-                logging::debug(&format!("update: inspecting zip entry=\"{}\"", file.name()));
-                if file.name().ends_with(bin_name) || file.name() == bin_name {
-                    let mut out = File::create(&new_bin_path)?;
-                    std::io::copy(&mut file, &mut out)?;
-                    found = true;
-                    break;
-                }
-            }
-        } else {
-            let tar_gz = File::open(&archive_path)?;
-            let tar = flate2::read::GzDecoder::new(tar_gz);
-            let mut archive = tar::Archive::new(tar);
-            for entry in archive.entries()? {
-                let mut entry = entry?;
-                let path = entry.path()?;
-                logging::debug(&format!(
-                    "update: inspecting tar entry=\"{}\"",
-                    path.display()
-                ));
-
-                // Match if the file name is exactly the binary name, or if the path ends with it
-                // (handles nested structures like `govmr-v2.0.0/govmr` or `./govmr`)
-                let name_matches = path.file_name().is_some_and(|n| n == bin_name);
-                let path_matches = path.to_string_lossy().ends_with(&format!("/{bin_name}"))
-                    || path.to_string_lossy() == bin_name;
-
-                if (name_matches || path_matches) && !entry.header().entry_type().is_dir() {
-                    entry.unpack(&new_bin_path)?;
-                    found = true;
-                    break;
-                }
-            }
-        }
-
-        if !found {
+        if !Self::extract_update_binary(&archive_path, &new_bin_path, bin_name)? {
             return Err(GovmError::Extraction(format!(
                 "binary '{bin_name}' not found in the downloaded archive. Check the release asset contents in ~/.govmr/govmr.log"
             )));
         }
 
-        // Replace the current executable using the atomic rename trick
-        // to avoid ETXTBSY (Text file busy) on Linux.
         let current_exe = replace_current_binary(&new_bin_path)?;
 
         logging::info(&format!(
@@ -684,6 +592,119 @@ impl GoManager {
 
         Ok(())
     }
+
+    // -------------------------------------- Internal Helpers -------------------------------------- //
+
+    /// Streams the update archive into `bytes_buf`, emitting smoothed progress
+    /// events and returning the number of bytes fetched.
+    async fn stream_update_archive<F>(&self, url: &str, progress: &F) -> Result<Vec<u8>, GovmError>
+    where
+        F: Fn(InstallProgress),
+    {
+        let res = self.client.get(url).send().await?;
+        let status = res.status();
+        if !status.is_success() {
+            return Err(GovmError::HttpStatus {
+                status: status.as_u16(),
+                url: res.url().to_string(),
+            });
+        }
+
+        let total_size = res.content_length().unwrap_or(0);
+        let mut downloaded: u64 = 0;
+        let mut stream = res.bytes_stream();
+
+        let mut last_report = Instant::now();
+        let mut last_bytes: u64 = 0;
+        let mut smoothed_speed: f64 = 0.0;
+        let mut bytes_buf = Vec::new();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            bytes_buf.extend_from_slice(&chunk);
+            downloaded += chunk.len() as u64;
+
+            let now = Instant::now();
+            let elapsed = now.duration_since(last_report).as_secs_f64();
+            if elapsed >= 0.25 || total_size == 0 {
+                #[allow(clippy::cast_precision_loss)]
+                let instant_speed = (downloaded - last_bytes) as f64 / elapsed.max(1e-3);
+                smoothed_speed = if smoothed_speed == 0.0 {
+                    instant_speed
+                } else {
+                    smoothed_speed * 0.6 + instant_speed * 0.4
+                };
+
+                progress(InstallProgress::Downloading {
+                    downloaded,
+                    total: total_size,
+                    bytes_per_sec: smoothed_speed,
+                });
+                last_report = now;
+                last_bytes = downloaded;
+            }
+        }
+
+        progress(InstallProgress::Downloading {
+            downloaded,
+            total: total_size,
+            bytes_per_sec: smoothed_speed,
+        });
+        progress(InstallProgress::Extracting);
+
+        Ok(bytes_buf)
+    }
+
+    /// Extracts the `govmr` binary from a downloaded update archive into
+    /// `new_bin_path`, returning `true` when the binary was found and unpacked.
+    fn extract_update_binary(
+        archive_path: &Path,
+        new_bin_path: &Path,
+        bin_name: &str,
+    ) -> Result<bool, GovmError> {
+        let mut found = false;
+
+        if cfg!(windows) {
+            let mut archive = zip::ZipArchive::new(File::open(archive_path)?)
+                .map_err(|e| GovmError::Extraction(e.to_string()))?;
+            for i in 0..archive.len() {
+                let mut file = archive
+                    .by_index(i)
+                    .map_err(|e| GovmError::Extraction(e.to_string()))?;
+                logging::debug(&format!("update: inspecting zip entry=\"{}\"", file.name()));
+                if file.name().ends_with(bin_name) || file.name() == bin_name {
+                    let mut out = File::create(new_bin_path)?;
+                    std::io::copy(&mut file, &mut out)?;
+                    found = true;
+                    break;
+                }
+            }
+        } else {
+            let tar_gz = File::open(archive_path)?;
+            let tar = flate2::read::GzDecoder::new(tar_gz);
+            let mut archive = tar::Archive::new(tar);
+            for entry in archive.entries()? {
+                let mut entry = entry?;
+                let path = entry.path()?;
+                logging::debug(&format!(
+                    "update: inspecting tar entry=\"{}\"",
+                    path.display()
+                ));
+
+                let name_matches = path.file_name().is_some_and(|n| n == bin_name);
+                let path_matches = path.to_string_lossy().ends_with(&format!("/{bin_name}"))
+                    || path.to_string_lossy() == bin_name;
+
+                if (name_matches || path_matches) && !entry.header().entry_type().is_dir() {
+                    entry.unpack(new_bin_path)?;
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        Ok(found)
+    }
 }
 
 // -------------------------------------- Internal Helpers -------------------------------------- //
@@ -694,7 +715,7 @@ impl GoManager {
 /// Best-effort by design: unreadable or vanished entries count as zero rather
 /// than failing the operation that merely wanted a number for the log. Symlinks
 /// are measured, not followed, so a link cannot be double-counted or loop.
-fn dir_size(path: &std::path::Path) -> u64 {
+fn dir_size(path: &Path) -> u64 {
     let Ok(entries) = fs::read_dir(path) else {
         return 0;
     };
