@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0](https://github.com/seyallius/govmr/compare/v2.0.0...v3.0.0) - 2026-09-10
+
+### Added
+
+- *(update)* follow similar ui as install for self-update
+
+### Fixed
+
+- *(update)* improve binary extraction with forensic logging and robust matching
+
 ## [2.0.0](https://github.com/seyallius/govmr/compare/v1.1.1...v2.0.0) - 2026-09-09
 
 ### Added
