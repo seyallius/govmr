@@ -15,7 +15,7 @@ use crate::{
     manager::update::replace_current_binary,
     shim::ShimManager,
     theme::{Theme, ThemeName},
-    version::{compare_versions, GoRelease, GoVersion},
+    version::{GoRelease, GoVersion, compare_versions},
 };
 use futures_util::StreamExt;
 use std::{
@@ -23,7 +23,7 @@ use std::{
         self,
         consts::{ARCH, OS},
     },
-    fs,
+    fs::{self, File},
     path::PathBuf,
     sync::Mutex,
     time::{Duration, Instant},
@@ -546,6 +546,59 @@ impl GoManager {
 
         let bin_name = if cfg!(windows) { "govmr.exe" } else { "govmr" };
         let new_bin_path = temp_dir.join(bin_name);
+        let mut found = false;
+
+        // Extract the binary with forensic logging
+        if cfg!(windows) {
+            let mut archive = zip::ZipArchive::new(File::open(&archive_path)?)
+                .map_err(|e| GovmError::Extraction(e.to_string()))?;
+            for i in 0..archive.len() {
+                let mut file = archive
+                    .by_index(i)
+                    .map_err(|e| GovmError::Extraction(e.to_string()))?;
+                logging::debug(&format!("update: inspecting zip entry=\"{}\"", file.name()));
+                if file.name().ends_with(bin_name) || file.name() == bin_name {
+                    let mut out = File::create(&new_bin_path)?;
+                    std::io::copy(&mut file, &mut out)?;
+                    found = true;
+                    break;
+                }
+            }
+        } else {
+            let tar_gz = File::open(&archive_path)?;
+            let tar = flate2::read::GzDecoder::new(tar_gz);
+            let mut archive = tar::Archive::new(tar);
+            for entry in archive.entries()? {
+                let mut entry = entry?;
+                let path = entry.path()?;
+                logging::debug(&format!(
+                    "update: inspecting tar entry=\"{}\"",
+                    path.display()
+                ));
+
+                // Match if the file name is exactly the binary name, or if the path ends with it
+                // (handles nested structures like `govmr-v2.0.0/govmr` or `./govmr`)
+                let name_matches = path.file_name().is_some_and(|n| n == bin_name);
+                let path_matches = path.to_string_lossy().ends_with(&format!("/{}", bin_name))
+                    || path.to_string_lossy() == bin_name;
+
+                if (name_matches || path_matches) && !entry.header().entry_type().is_dir() {
+                    entry.unpack(&new_bin_path)?;
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if !found {
+            return Err(GovmError::Extraction(format!(
+                "binary '{}' not found in the downloaded archive. Check the release asset contents in ~/.govmr/govmr.log",
+                bin_name
+            )));
+        }
+
+        // Replace the current executable using the atomic rename trick
+        // to avoid ETXTBSY (Text file busy) on Linux.
         let current_exe = replace_current_binary(&new_bin_path)?;
 
         logging::info(&format!(
