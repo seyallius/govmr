@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0](https://github.com/seyallius/govmr/compare/v2.1.0...v2.2.0) - 2026-09-11
+
+<!-- Manually -->
+
+### Fixed
+
+- *(crate)* unify binary and library crates to lock down public API
+- **(update)** replace custom binary-swap logic with `self-replace` crate
+- **(uninstall)** delegate self-uninstallation to `self_replace`
+
+### Other
+
+- *(clippy)* extract update and status-bar helpers to reduce function size
+- **(release-plz)** release binaries bump
+
 ## [2.1.0](https://github.com/seyallius/govmr/compare/v2.0.0...v2.1.0) - 2026-09-09
 
 ### Added
