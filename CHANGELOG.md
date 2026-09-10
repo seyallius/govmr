@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(update)* improve binary extraction with forensic logging and robust matching
 
+## [2.2.0](https://github.com/seyallius/govmr/compare/v2.1.0...v2.2.0) - 2026-09-10
+
+### Fixed
+
+- *(crate)* unify binary and library crates to lock down public API
+
+### Other
+
+- *(clippy)* extract update and status-bar helpers to reduce function size
+
 ## [2.0.0](https://github.com/seyallius/govmr/compare/v1.1.1...v2.0.0) - 2026-09-09
 
 ### Added
