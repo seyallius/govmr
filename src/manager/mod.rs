@@ -2,7 +2,6 @@
 
 mod archive;
 mod install;
-mod update;
 
 #[cfg(test)]
 pub(crate) use archive::check_archive_magic;
@@ -13,7 +12,6 @@ use crate::{
     config::Config,
     errors::GovmError,
     logging,
-    manager::update::replace_current_binary,
     shim::ShimManager,
     theme::{Theme, ThemeName},
     version::{compare_versions, GoRelease, GoVersion},
@@ -489,8 +487,8 @@ impl GoManager {
         ));
         let started_at = Instant::now();
 
+        // 1. Download with progress
         let bytes_buf = self.stream_update_archive(&url, &progress).await?;
-
         logging::debug(&format!(
             "update: archive fetched target={version} size={} ({} bytes) elapsed_time={}s",
             GoVersion::format_size(bytes_buf.len() as u64),
@@ -498,13 +496,20 @@ impl GoManager {
             started_at.elapsed().as_secs()
         ));
 
+        // 2. Save to temp file
         let temp_dir = env::temp_dir().join("govmr_update");
         let _ = fs::create_dir_all(&temp_dir);
         let archive_path = temp_dir.join(format!("govmr.{ext}"));
         fs::write(&archive_path, &bytes_buf)?;
 
+        // 3. Extract
         let bin_name = if cfg!(windows) { "govmr.exe" } else { "govmr" };
         let new_bin_path = temp_dir.join(bin_name);
+
+        logging::info(&format!(
+            "update: extracting target={version} archive=\"{}\"",
+            archive_path.display()
+        ));
 
         if !Self::extract_update_binary(&archive_path, &new_bin_path, bin_name)? {
             return Err(GovmError::Extraction(format!(
@@ -512,13 +517,27 @@ impl GoManager {
             )));
         }
 
-        let current_exe = replace_current_binary(&new_bin_path)?;
+        logging::info(&format!(
+            "update: extracted target={version} bin=\"{}\"",
+            new_bin_path.display()
+        ));
+
+        // 4. Replace using self-replace (handles ETXTBSY and Windows locks natively)
+        logging::info(&format!("update: replacing binary target={version}"));
+
+        self_replace::self_replace(&new_bin_path).map_err(|e| {
+            logging::error(&format!("update: replace failed error=\"{e}\""));
+            GovmError::Extraction(format!("Failed to replace binary: {e}"))
+        })?;
 
         logging::info(&format!(
-            "update: complete current={current} target={version} exe=\"{}\" elapsed_ms={}",
-            current_exe.display(),
-            started_at.elapsed().as_millis()
+            "update: complete from={current} to={version} elapsed_time={}s",
+            started_at.elapsed().as_secs()
         ));
+
+        // Cleanup temp dir
+        let _ = fs::remove_dir_all(&temp_dir);
+
         Ok(())
     }
 
