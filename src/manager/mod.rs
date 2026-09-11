@@ -552,46 +552,16 @@ impl GoManager {
     /// file-removal step fails.
     #[allow(clippy::unused_self)]
     pub(crate) fn uninstall(&self, purge: bool) -> Result<(), GovmError> {
-        let exe = std::env::current_exe()?;
+        // 1. Schedule the binary for deletion.
+        // `self_replace` handles the cross-platform nightmares for us:
+        // - Unix: unlinks the inode (the running process keeps executing from memory).
+        // - Windows: spawns a tiny background process that waits for our PID to
+        //   exit before deleting the locked `.exe` file.
+        self_replace::self_delete().map_err(GovmError::Io)?;
+        logging::info("uninstall: binary deletion scheduled via self_replace");
 
-        // 1. Remove the binary FIRST.
-        #[cfg(windows)]
-        {
-            use std::{os::windows::process::CommandExt, process};
-
-            let exe_path = exe.to_string_lossy().to_string();
-            // Escape single quotes for PowerShell string literals
-            let escaped_path = exe_path.replace('\'', "''");
-
-            // Spawn a detached PowerShell process that waits for us to exit,
-            // then deletes the executable. This avoids the ".old" leftover file.
-            let script =
-                format!("Start-Sleep -Seconds 2; Remove-Item -Force -LiteralPath '{escaped_path}'");
-
-            match process::Command::new("powershell")
-                .args([
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-WindowStyle",
-                    "Hidden",
-                    "-Command",
-                    &script,
-                ])
-                .creation_flags(CREATE_NO_WINDOW) // CREATE_NO_WINDOW: never flash a console
-                .spawn()
-            {
-                Ok(_) => logging::info("uninstall: scheduled exe=removed_on_exit"),
-                Err(e) => logging::warn(&format!(
-                    "uninstall: schedule failed error=\"{e}\" note=delete_the_executable_manually"
-                )),
-            }
-        }
-
-        #[cfg(not(windows))]
-        {
-            fs::remove_file(&exe)?;
-            logging::info(&format!("uninstall: removed exe=\"{}\"", exe.display()));
-        }
+        // 2. Binary is safely handled. Now clean up shell completions.
+        completions::remove_completions();
 
         // 2. Binary is gone (or scheduled to be). Now clean up completions.
         completions::remove_completions();

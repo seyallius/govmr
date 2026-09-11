@@ -117,8 +117,6 @@ pub(crate) fn ensure_completions() {
 /// Called during uninstall so no orphaned completion files survive, regardless
 /// of whether the user chose to purge `~/.govmr`.
 pub(crate) fn remove_completions() {
-    logging::debug("completions: removal started");
-
     for target in &all_possible_targets() {
         // Remove the shell-facing link (symlink on Unix, copied file on Windows).
         if target.link_path.symlink_metadata().is_ok() {
